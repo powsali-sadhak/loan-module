@@ -1,6 +1,6 @@
 # Loan Module (Spring Boot + MySQL)
 
-A role-based Loan Application Module designed for the West Bengal Government employee system using Spring Boot and MySQL. The system supports three roles — **Employee**, **DDO**, and **HOO** — following a defined approval workflow.
+A role-based Loan Application Module designed for employee system using Spring Boot and MySQL. The system supports three roles — **Employee**, **DDO**, and **HOO** — following a defined approval workflow.
 
 ---
 
