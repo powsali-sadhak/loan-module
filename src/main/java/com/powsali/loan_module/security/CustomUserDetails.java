@@ -1,9 +1,13 @@
 package com.powsali.loan_module.security;
 
 import com.powsali.loan_module.entity.User;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
-// CustomUserDetails.java
+import java.util.Collection;
+import java.util.List;
+
 public class CustomUserDetails implements UserDetails {
 
     private final User user;
@@ -31,4 +35,3 @@ public class CustomUserDetails implements UserDetails {
 
     public User getUser() { return user; }
 }
-
