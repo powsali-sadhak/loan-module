@@ -100,9 +100,100 @@ public class LoanActionService {
     }
 
     @Transactional(readOnly = true)
-    public List<LoanAction> getActionsForLoan(Long loanId) {
-        LoanApplication loan = loanRepository.findById(loanId)
-                .orElseThrow(() -> new IllegalArgumentException("Loan not found"));
-        return actionRepository.findByLoanApplicationId(loan);
+public List<LoanAction> getActionsForLoan(Long loanId) {
+
+    return actionRepository
+            .findByLoanApplication_IdOrderByActionTimeAsc(loanId);
+}
+
+    @Transactional
+public LoanApplication resubmitLoan(
+        Long loanId,
+        Long employeeId,
+        Double amount,
+        String purpose,
+        String remarks
+) {
+
+    LoanApplication loan = loanRepository.findById(loanId)
+            .orElseThrow(() ->
+                    new IllegalArgumentException("Loan not found"));
+
+    User employee = userRepository.findById(employeeId)
+            .orElseThrow(() ->
+                    new IllegalArgumentException("Employee not found"));
+
+    // Only employees can resubmit
+    if (employee.getRole() != Role.EMPLOYEE) {
+        throw new IllegalStateException(
+                "Only employees can resubmit loan applications");
     }
+
+    // Only the original applicant can resubmit
+    if (loan.getApplicant() == null
+            || !loan.getApplicant().getId().equals(employeeId)) {
+        throw new IllegalStateException(
+                "You can only resubmit your own loan application");
+    }
+
+    // Resubmission is permitted only after revision is requested
+    if (loan.getStatus() != LoanStatus.REVISION_REQUESTED) {
+        throw new IllegalStateException(
+                "This application is not awaiting revision");
+    }
+
+    if (amount == null || amount <= 0) {
+        throw new IllegalArgumentException(
+                "Loan amount must be greater than zero");
+    }
+
+    if (purpose == null || purpose.isBlank()) {
+        throw new IllegalArgumentException(
+                "Loan purpose is required");
+    }
+
+    if (remarks == null || remarks.isBlank()) {
+        throw new IllegalArgumentException(
+                "Resubmission remarks are required");
+    }
+
+    // Retrieve the original assigned workflow
+    List<ApprovalStep> steps = loan.getWorkflow()
+            .getSteps()
+            .stream()
+            .sorted(Comparator.comparing(
+                    ApprovalStep::getStepOrder))
+            .toList();
+
+    ApprovalStep firstStep = steps.stream()
+            .findFirst()
+            .orElseThrow(() ->
+                    new IllegalStateException(
+                            "The assigned workflow has no approval steps"));
+
+    // Update application details
+    loan.setAmount(amount);
+    loan.setPurpose(purpose.trim());
+    loan.setRemarks(remarks.trim());
+
+    // Restart approval at the first workflow step
+    loan.setStatus(LoanStatus.PENDING_APPROVAL);
+    loan.setCurrentStepOrder(firstStep.getStepOrder());
+    loan.setCurrentApproverRole(firstStep.getApproverRole());
+    loan.setCurrentOwner(firstStep.getApproverRole().name());
+
+    loanRepository.save(loan);
+
+    // Record resubmission in audit history
+    LoanAction action = LoanAction.builder()
+            .loanApplication(loan)
+            .actionBy(employee)
+            .actionType(ActionType.RESUBMITTED)
+            .remarks(remarks.trim())
+            .build();
+
+    actionRepository.save(action);
+
+    return loan;
+}
 }

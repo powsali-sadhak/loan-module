@@ -11,3 +11,5 @@ public class LoanRequestDTO {
     private String purpose;
 
 }
+
+
