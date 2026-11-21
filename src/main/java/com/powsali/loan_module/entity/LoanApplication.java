@@ -1,11 +1,9 @@
 package com.powsali.loan_module.entity;
 
 import com.powsali.loan_module.entity.enums.LoanStatus;
+import com.powsali.loan_module.entity.enums.Role;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.time.LocalDateTime;
 
@@ -25,31 +23,41 @@ public class LoanApplication {
     @JoinColumn(name = "applicant_id")
     private User applicant;
 
-    // Employee who is requesting the loan
     @ManyToOne
     @JoinColumn(name = "applied_by_id")
     private User appliedBy;
+
     private Double amount;
     private String purpose;
 
     @Enumerated(EnumType.STRING)
     private LoanStatus status;
 
-    // Who needs to act on this loan now
+    // Kept for compatibility with the original API and records.
     private String currentOwner;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "workflow_id")
+    private ApprovalWorkflow workflow;
+
+    private Integer currentStepOrder;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 30)
+    private Role currentApproverRole;
+
     private String remarks;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
     @PrePersist
-    protected void onCreate(){
+    protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = createdAt;
     }
 
     @PreUpdate
-    protected void onUpdate(){
+    protected void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
-
 }
