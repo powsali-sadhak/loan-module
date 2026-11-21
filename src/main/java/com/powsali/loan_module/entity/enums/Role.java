@@ -4,5 +4,6 @@ public enum Role {
     EMPLOYEE,
     DDO,
     HOO,
+    SUPPORT,
     ADMIN
 }
