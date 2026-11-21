@@ -29,8 +29,14 @@ public class LoanService {
         User applicant = userRepository.findById(applicantId)
                 .orElseThrow(() -> new IllegalArgumentException("Applicant not found"));
         User appliedBy = userRepository.findById(appliedById)
-                .orElseThrow(() -> new IllegalArgumentException("AppliedBy user not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Authenticated applicant/submitter not found"));
 
+        if (appliedBy.getRole() == Role.EMPLOYEE && !applicant.getId().equals(appliedBy.getId())) {
+            throw new IllegalStateException("Employees can only submit loan applications for themselves");
+        }
+        if (appliedBy.getRole() != Role.EMPLOYEE && appliedBy.getRole() != Role.DDO) {
+            throw new IllegalStateException("Only employees and DDO users can submit loan applications");
+        }
         if (amount == null || amount <= 0) {
             throw new IllegalArgumentException("Loan amount must be greater than zero");
         }
