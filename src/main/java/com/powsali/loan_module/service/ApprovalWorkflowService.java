@@ -85,7 +85,7 @@ public class ApprovalWorkflowService {
                 throw new IllegalArgumentException("Approval step orders must be sequential starting at 1");
             }
             if (step.getApproverRole() == null || step.getApproverRole() == Role.EMPLOYEE
-                    || step.getApproverRole() == Role.ADMIN) {
+                    || step.getApproverRole() == Role.ADMIN || step.getApproverRole() == Role.SUPPORT) {
                 throw new IllegalArgumentException("Each approval step must have an approver role such as DDO or HOO");
             }
             if (step.getLabel() == null || step.getLabel().isBlank()) {
