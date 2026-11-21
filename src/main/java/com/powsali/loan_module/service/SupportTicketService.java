@@ -7,7 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.time.LocalDateTime; import java.time.Year; import java.util.List;
+import java.time.LocalDateTime; import java.time.Year; import java.util.List; import java.util.UUID;
 @Service @RequiredArgsConstructor
 public class SupportTicketService {
  private final SupportTicketRepository tickets; private final TicketCommentRepository comments; private final UserRepository users; private final LoanRepository loans;
@@ -16,7 +16,7 @@ public class SupportTicketService {
   if(req.getSubject().trim().length()>180||req.getDescription().trim().length()>5000) throw new IllegalArgumentException("Subject or description exceeds the allowed length");
   SupportTicket t=new SupportTicket(); t.setRequester(requester);t.setCategory(req.getCategory());t.setPriority(req.getPriority());t.setSubject(req.getSubject().trim());t.setDescription(req.getDescription().trim());t.setStatus(TicketStatus.OPEN);
   if(req.getLoanId()!=null){LoanApplication loan=loans.findById(req.getLoanId()).orElseThrow(()->new IllegalArgumentException("Loan application not found"));boolean owner=loan.getApplicant().getId().equals(requester.getId())||loan.getAppliedBy().getId().equals(requester.getId());if(!owner&&requester.getRole()!=Role.ADMIN)throw new AccessDeniedException("You can only link a loan you own or submitted");t.setLoanApplication(loan);}
-  SupportTicket saved=tickets.save(t);saved.setTicketNumber("TKT-"+Year.now().getValue()+"-"+String.format("%06d",saved.getId()));return response(tickets.save(saved),requester);
+  t.setTicketNumber("TKT-"+Year.now().getValue()+"-"+UUID.randomUUID().toString().substring(0,8).toUpperCase());return response(tickets.save(t),requester);
  }
  @Transactional(readOnly=true) public List<TicketResponseDTO> mine(User u){return tickets.findByRequesterOrderByCreatedAtDesc(u).stream().map(t->response(t,u)).toList();}
  @Transactional(readOnly=true) public List<TicketResponseDTO> queue(User u){requireStaff(u);if(u.getRole()==Role.ADMIN)return tickets.findAll().stream().map(t->response(t,u)).toList();return tickets.findByAssigneeIsNullOrAssigneeOrderByUpdatedAtDesc(u).stream().map(t->response(t,u)).toList();}
@@ -28,7 +28,7 @@ public class SupportTicketService {
   boolean valid=(old==TicketStatus.OPEN&&(next==TicketStatus.ASSIGNED||next==TicketStatus.IN_PROGRESS))||(old==TicketStatus.ASSIGNED&&(next==TicketStatus.IN_PROGRESS||next==TicketStatus.OPEN))||(old==TicketStatus.IN_PROGRESS&&next==TicketStatus.RESOLVED)||(old==TicketStatus.RESOLVED&&(next==TicketStatus.IN_PROGRESS||next==TicketStatus.CLOSED));
   if(!valid)throw new IllegalStateException("Unsupported status transition: "+old+" -> "+next);
   if(next==TicketStatus.RESOLVED&&blank(resolution))throw new IllegalArgumentException("Resolution summary is required");
-  if(actor.getRole()==Role.SUPPORT&&t.getAssignee()==null)t.setAssignee(actor);t.setStatus(next);if(next==TicketStatus.RESOLVED){t.setResolution(resolution.trim());t.setResolvedAt(LocalDateTime.now());}if(next==TicketStatus.IN_PROGRESS){t.setResolvedAt(null);t.setClosedAt(null);}if(next==TicketStatus.CLOSED)t.setClosedAt(LocalDateTime.now());if(next==TicketStatus.OPEN)t.setAssignee(null);
+  if(actor.getRole()==Role.SUPPORT&&t.getAssignee()==null&&next!=TicketStatus.OPEN)t.setAssignee(actor);t.setStatus(next);if(next==TicketStatus.RESOLVED){t.setResolution(resolution.trim());t.setResolvedAt(LocalDateTime.now());}if(next==TicketStatus.IN_PROGRESS){t.setResolvedAt(null);t.setClosedAt(null);}if(next==TicketStatus.CLOSED)t.setClosedAt(LocalDateTime.now());if(next==TicketStatus.OPEN)t.setAssignee(null);
   return response(tickets.save(t),actor);
  }
  @Transactional public TicketResponseDTO comment(Long id,TicketCommentRequestDTO req,User actor){if(req==null||blank(req.getBody())||req.getBody().trim().length()>3000)throw new IllegalArgumentException("Comment is required and must not exceed 3000 characters");SupportTicket t=find(id);access(t,actor);if(req.isInternalNote()&&!staff(actor))throw new AccessDeniedException("Only support staff can add internal notes");TicketComment c=new TicketComment();c.setTicket(t);c.setAuthor(actor);c.setBody(req.getBody().trim());c.setInternalNote(req.isInternalNote());comments.save(c);return response(t,actor);}
