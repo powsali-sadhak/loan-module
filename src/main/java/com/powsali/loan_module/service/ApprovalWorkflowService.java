@@ -6,6 +6,7 @@ import com.powsali.loan_module.entity.ApprovalStep;
 import com.powsali.loan_module.entity.ApprovalWorkflow;
 import com.powsali.loan_module.entity.enums.Role;
 import com.powsali.loan_module.repository.ApprovalWorkflowRepository;
+import com.powsali.loan_module.repository.LoanRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +18,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ApprovalWorkflowService {
     private final ApprovalWorkflowRepository workflowRepository;
+    private final LoanRepository loanRepository;
 
     @Transactional(readOnly = true)
     public List<ApprovalWorkflow> getAll() {
@@ -36,10 +38,7 @@ public class ApprovalWorkflowService {
                 .build();
         workflow.replaceSteps(toSteps(request.getSteps()));
         ApprovalWorkflow saved = workflowRepository.save(workflow);
-        if (request.isActive()) {
-            return activate(saved.getId());
-        }
-        return saved;
+        return request.isActive() ? activate(saved.getId()) : saved;
     }
 
     @Transactional
@@ -47,6 +46,9 @@ public class ApprovalWorkflowService {
         validate(request);
         ApprovalWorkflow workflow = workflowRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Workflow not found: " + id));
+        if (loanRepository.existsByWorkflowId(id)) {
+            throw new IllegalStateException("This workflow is already assigned to loan applications. Create a new workflow version instead.");
+        }
         workflowRepository.findAllByOrderByIdAsc().stream()
                 .filter(other -> !other.getId().equals(id))
                 .filter(other -> other.getName().equalsIgnoreCase(request.getName().trim()))
@@ -56,10 +58,7 @@ public class ApprovalWorkflowService {
         workflow.setDescription(request.getDescription());
         workflow.replaceSteps(toSteps(request.getSteps()));
         ApprovalWorkflow saved = workflowRepository.save(workflow);
-        if (request.isActive()) {
-            return activate(saved.getId());
-        }
-        return saved;
+        return request.isActive() ? activate(saved.getId()) : saved;
     }
 
     @Transactional
