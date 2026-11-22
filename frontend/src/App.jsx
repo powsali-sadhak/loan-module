@@ -27,6 +27,7 @@ const nav = [
 ]
 
 export default function App() {
+  const [demoUsers, setDemoUsers] = useState(DEMO_USERS)
   const [user, setUser] = useState(() => {
     try { return JSON.parse(localStorage.getItem('loan_demo_user')) || DEMO_USERS[0] } catch { return DEMO_USERS[0] }
   })
@@ -40,10 +41,24 @@ export default function App() {
   }, [location.pathname])
 
   useEffect(() => { localStorage.setItem('loan_demo_user', JSON.stringify(user)) }, [user])
+
+  // Load real database IDs so the demo identity switcher always matches MySQL.
+  useEffect(() => {
+    let mounted = true
+    api.get('/api/demo/users')
+      .then(({ data }) => {
+        if (!mounted || !Array.isArray(data) || data.length === 0) return
+        setDemoUsers(data)
+        setUser(current => data.find(item => item.username === current.username) || data[0])
+      })
+      .catch(error => console.warn('Could not load demo users from backend:', error))
+    return () => { mounted = false }
+  }, [])
+
   const visibleNav = nav.map(group => ({ ...group, items: group.items.filter(item => !item.roles || item.roles.includes(user.role)) })).filter(group => group.items.length)
 
   function changeUser(id) {
-    const next = DEMO_USERS.find(x => x.id === Number(id))
+    const next = demoUsers.find(x => x.id === Number(id))
     if (next) { setUser(next); navigate('/') }
   }
   function logout() { setToken(null); navigate('/login') }
@@ -60,7 +75,7 @@ export default function App() {
       <header className="topbar"><div className="topbar-left"><button className="icon-btn mobile-menu" onClick={() => setMenuOpen(true)}><Menu size={20}/></button><span className="breadcrumb">Portal <span>/</span> {pageTitle}</span></div><div className="topbar-right">
         <div className="demo-label"><span className="online-dot"/> {demoMode ? 'LOCAL DEMO' : 'CONNECTED'}</div>
         <button className="icon-btn notification-btn" title="Notifications"><Bell size={18}/><i/></button>
-        <div className="user-menu"><div className="avatar">{user.name.split(' ').map(x=>x[0]).slice(0,2).join('')}</div><div className="user-meta"><b>{user.name}</b><small>{user.role}</small></div><select aria-label="Switch demo user" value={user.id} onChange={e=>changeUser(e.target.value)} title="Demo identity selector">{DEMO_USERS.map(u=><option key={u.id} value={u.id}>{u.username} · {u.role}</option>)}</select><button className="icon-btn" onClick={logout} title="Sign out"><LogOut size={17}/></button></div>
+        <div className="user-menu"><div className="avatar">{user.name.split(' ').map(x=>x[0]).slice(0,2).join('')}</div><div className="user-meta"><b>{user.name}</b><small>{user.role}{user.serviceGroup ? ` · Group ${user.serviceGroup}` : ''}</small></div><select aria-label="Switch demo user" value={user.id} onChange={e=>changeUser(e.target.value)} title="Demo identity selector">{demoUsers.map(u=><option key={u.id} value={u.id}>{u.username} · {u.role}{u.serviceGroup ? ` · Group ${u.serviceGroup}` : ''}</option>)}</select><button className="icon-btn" onClick={logout} title="Sign out"><LogOut size={17}/></button></div>
       </div></header>
       <div className="page-wrap"><Routes>
         <Route path="/login" element={<Login onLogin={token=>{setToken(token);navigate('/')}}/>}/>
