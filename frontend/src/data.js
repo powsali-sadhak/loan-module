@@ -1,7 +1,7 @@
 export const DEMO_USERS = [
-  { id: 7, username: 'employee1', name: 'Test Employee', role: 'EMPLOYEE', email: 'employee1@test.com' },
-  { id: 8, username: 'ddo1', name: 'Test DDO', role: 'DDO', email: 'ddo1@test.com' },
-  { id: 9, username: 'hoo1', name: 'Test HOO', role: 'HOO', email: 'hoo1@test.com' },
+  { id: 7, username: 'employee1', name: 'Ananya Das', role: 'EMPLOYEE', serviceGroup: 'A', email: 'employee1@test.com' },
+  { id: 8, username: 'ddo1', name: 'Rajesh Chatterjee', role: 'DDO', serviceGroup: 'B', email: 'ddo1@test.com' },
+  { id: 9, username: 'hoo1', name: 'Anirban Roy', role: 'HOO', serviceGroup: 'A', email: 'hoo1@test.com' },
   { id: 1, username: 'admin', name: 'System Administrator', role: 'ADMIN', email: 'admin@loanmodule.com' }
 ]
 export const money = value => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(value || 0))
