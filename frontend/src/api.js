@@ -9,6 +9,17 @@ const api = axios.create({
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('loan_jwt')
   if (token) config.headers.Authorization = `Bearer ${token}`
+
+  // Local demo identity. Backend endpoints that use the authenticated
+  // principal ignore this header; demo-mode endpoints resolve the selected
+  // database user from it because the JWT filter is intentionally disabled.
+  try {
+    const demoUser = JSON.parse(localStorage.getItem('loan_demo_user') || 'null')
+    if (demoUser?.id) config.headers['X-Demo-User-Id'] = String(demoUser.id)
+  } catch {
+    // Ignore malformed demo identity state; the backend will return a clear error.
+  }
+
   return config
 })
 
