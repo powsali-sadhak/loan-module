@@ -2,10 +2,13 @@ package com.powsali.loan_module.controller;
 
 import com.powsali.loan_module.entity.User;
 import com.powsali.loan_module.repository.UserRepository;
+import com.powsali.loan_module.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Comparator;
@@ -13,7 +16,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/demo/users")
-@Profile("!prod")
+@Profile("local-demo")
 @RequiredArgsConstructor
 public class DemoUserController {
 
@@ -42,12 +45,13 @@ public class DemoUserController {
     @PatchMapping("/{userId}/whatsapp-settings")
     public DemoUserResponse updateWhatsAppSettings(
             @PathVariable Long userId,
-            @RequestHeader(value = "X-Demo-User-Id", required = false) Long demoUserId,
+            @AuthenticationPrincipal CustomUserDetails principal,
             @RequestBody WhatsAppSettingsRequest request) {
 
-        if (demoUserId == null || !demoUserId.equals(userId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "You can only update WhatsApp settings for the selected demo user.");
+        if (principal == null || principal.getUser() == null
+                || !principal.getUser().getId().equals(userId)) {
+            throw new AccessDeniedException(
+                    "You can only update WhatsApp settings for the authenticated demo user.");
         }
 
         User user = userRepository.findById(userId)
