@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   Activity, ArrowDownRight, ArrowRight, ArrowUpRight, BadgeCheck, CalendarDays, Check, CheckCircle2,
-  ChevronRight, CircleAlert, Clock3, FilePlus2, FileText, Filter, Landmark, LifeBuoy,
+  ChevronRight, CircleAlert, Clock3, Download, Eye, FilePlus2, FileText, Filter, Landmark, LifeBuoy, Paperclip,
   Inbox, LoaderCircle, MessageSquare, Plus, RefreshCw, Search, Send, ShieldCheck, SlidersHorizontal, UserRound,
   Sparkles, Wallet, X
 } from 'lucide-react'
@@ -347,8 +347,150 @@ export function LoanDetails({user}) {
   if(loading)return <Spinner/>
   if(error)return <><PageHeader eyebrow="LOAN SERVICES" title="Application details" subtitle="Review your application and its progress."/><Alert>{error}</Alert></>
   if(!loan)return null
-  return <><PageHeader eyebrow="APPLICATION LN-{loanId}" title="Application details" subtitle="Review the current status and every recorded action." action={<Link className="btn btn-quiet" to="/loans">Back to applications</Link>}/><div className="detail-grid"><section className="panel detail-main"><div className="detail-top"><div><span className="muted-label">REQUESTED AMOUNT</span><div className="detail-amount">{money(loan.amount)}</div></div><Status value={loan.status}/></div><div className="detail-kv"><div><small>Application ID</small><b>LN-{String(loan.loanId).padStart(5,'0')}</b></div><div><small>Submitted on</small><b>{dateTime(loan.createdAt)}</b></div><div><small>Current owner</small><b>{loan.currentOwner||'Completed'}</b></div><div><small>Current approval role</small><b>{loan.currentApproverRole||'—'}</b></div></div><div className="detail-purpose"><small>LOAN PURPOSE</small><p>{loan.purpose}</p></div></section><section className="panel timeline-panel"><div className="panel-heading"><div><h3>Activity timeline</h3><p>Approval journey and updates</p></div><ActivityIcon/></div>{actions.length?<div className="timeline">{actions.map(a=><div className="timeline-item" key={a.actionId}><div className="timeline-dot"><Check size={13}/></div><div><b>{titleCase(a.actionType)}</b><small>{a.actionBy||'System'} · {dateTime(a.actionTime)}</small>{a.remarks&&<p>{a.remarks}</p>}</div></div>)}</div>:<Empty title="No actions recorded" copy="Updates will appear here as your application moves through review."/>}</section></div></>
+  return <><PageHeader eyebrow="APPLICATION LN-{loanId}" title="Application details" subtitle="Review the current status and every recorded action." action={<Link className="btn btn-quiet" to="/loans">Back to applications</Link>}/><div className="detail-grid"><section className="panel detail-main"><div className="detail-top"><div><span className="muted-label">REQUESTED AMOUNT</span><div className="detail-amount">{money(loan.amount)}</div></div><Status value={loan.status}/></div><div className="detail-kv"><div><small>Application ID</small><b>LN-{String(loan.loanId).padStart(5,'0')}</b></div><div><small>Submitted on</small><b>{dateTime(loan.createdAt)}</b></div><div><small>Current owner</small><b>{loan.currentOwner||'Completed'}</b></div><div><small>Current approval role</small><b>{loan.currentApproverRole||'—'}</b></div></div><div className="detail-purpose"><small>LOAN PURPOSE</small><p>{loan.purpose}</p></div></section><section className="panel timeline-panel"><div className="panel-heading"><div><h3>Activity timeline</h3><p>Approval journey and updates</p></div><ActivityIcon/></div>{actions.length?<div className="timeline">{actions.map(a=><div className="timeline-item" key={a.actionId}><div className="timeline-dot"><Check size={13}/></div><div><b>{titleCase(a.actionType)}</b><small>{a.actionBy||'System'} · {dateTime(a.actionTime)}</small>{a.remarks&&<p>{a.remarks}</p>}</div></div>)}</div>:<Empty title="No actions recorded" copy="Updates will appear here as your application moves through review."/>}</section></div><LoanDocuments loan={loan} user={user}/></>
 }
+
+function formatDocumentSize(bytes) {
+  const size = Number(bytes || 0)
+  if (size < 1024) return size + ' B'
+  if (size < 1024 * 1024) return (size / 1024).toFixed(1) + ' KB'
+  return (size / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+function LoanDocuments({loan,user}) {
+  const [documents,setDocuments] = useState([])
+  const [selectedFile,setSelectedFile] = useState(null)
+  const [loading,setLoading] = useState(true)
+  const [busy,setBusy] = useState(false)
+  const [error,setError] = useState('')
+  const [success,setSuccess] = useState('')
+
+  const isApplicant = Number(loan.applicantId) === Number(user.id)
+  const isSubmitter = Number(loan.appliedById) === Number(user.id)
+  const isAdmin = user.role === 'ADMIN'
+  const isCurrentApprover = ['DDO','HOO'].includes(user.role)
+    && loan.status === 'PENDING_APPROVAL'
+    && loan.currentApproverRole === user.role
+  const canUpload = isApplicant || isSubmitter || isAdmin || isCurrentApprover
+
+  async function loadDocuments(showLoading=true) {
+    if (showLoading) setLoading(true)
+    setError('')
+    try {
+      const response = await api.get(`/api/loans/${loan.loanId}/documents`)
+      setDocuments(Array.isArray(response.data) ? response.data : [])
+    } catch (e) {
+      setError(friendlyError(e))
+    } finally {
+      if (showLoading) setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadDocuments()
+  }, [loan.loanId])
+
+  async function uploadDocument(event) {
+    event.preventDefault()
+    if (!selectedFile) {
+      setError('Choose a PDF, JPG or PNG document first.')
+      return
+    }
+    if (selectedFile.size > 10 * 1024 * 1024) {
+      setError('The maximum document size is 10 MB.')
+      return
+    }
+
+    setBusy(true)
+    setError('')
+    setSuccess('')
+    try {
+      const body = new FormData()
+      body.append('document', selectedFile)
+      await api.post(`/api/loans/${loan.loanId}/documents`, body)
+      setSelectedFile(null)
+      const picker = event.currentTarget.querySelector('input[type="file"]')
+      if (picker) picker.value = ''
+      setSuccess('Document uploaded successfully.')
+      await loadDocuments(false)
+    } catch (e) {
+      setError(friendlyError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function openDocument(file, asDownload=false) {
+    setError('')
+    try {
+      const response = await api.get(
+        `/api/loans/${loan.loanId}/documents/${file.documentId}/content`,
+        { responseType: 'blob' }
+      )
+      const objectUrl = URL.createObjectURL(response.data)
+      const link = window.document.createElement('a')
+      link.href = objectUrl
+      if (asDownload) {
+        link.download = file.fileName
+      } else {
+        link.target = '_blank'
+        link.rel = 'noopener noreferrer'
+      }
+      window.document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000)
+    } catch (e) {
+      setError(friendlyError(e))
+    }
+  }
+
+  return <section className="panel" style={{marginTop:18}}>
+    <div className="panel-heading">
+      <div>
+        <h3><Paperclip size={15} style={{verticalAlign:'-2px',marginRight:6}}/> Supporting documents</h3>
+        <p>Private files attached to LN-{String(loan.loanId).padStart(5,'0')} · PDF, JPG and PNG · Maximum 10 MB each</p>
+      </div>
+      <span className="soft-tag">{documents.length}/10 files</span>
+    </div>
+    {error&&<Alert>{error}</Alert>}
+    {success&&<Alert type="success">{success}</Alert>}
+    {canUpload&&<form onSubmit={uploadDocument} style={{padding:'0 20px 16px',display:'flex',alignItems:'end',gap:10,flexWrap:'wrap'}}>
+      <label className="field" style={{margin:0,flex:'1 1 260px'}}>
+        <span>Choose supporting document</span>
+        <input
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+          onChange={event=>setSelectedFile(event.target.files?.[0]||null)}
+        />
+        <small>{selectedFile ? selectedFile.name+' · '+formatDocumentSize(selectedFile.size) : 'Documents are stored privately outside the public frontend folder.'}</small>
+      </label>
+      <button className="btn btn-primary" disabled={busy||!selectedFile||documents.length>=10}>
+        {busy?<LoaderCircle className="spin" size={15}/>:<Paperclip size={15}/>} Upload document
+      </button>
+    </form>}
+    {loading?<Spinner/>:documents.length===0
+      ?<Empty title="No supporting documents" copy={canUpload?'Upload the documents required for this application.':'No documents have been attached to this application yet.'}/>
+      :<div className="ticket-list" style={{padding:'0 20px 8px'}}>
+        {documents.map(file=><div className="ticket-row" key={file.documentId}>
+          <div className="ticket-symbol"><FileText size={18}/></div>
+          <div className="ticket-main">
+            <b>{file.fileName}</b>
+            <small>{formatDocumentSize(file.fileSize)} · Uploaded by {file.uploadedBy} · {dateTime(file.uploadedAt)}</small>
+          </div>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+            <button type="button" className="btn btn-quiet btn-sm" onClick={()=>openDocument(file,false)}><Eye size={13}/> Preview</button>
+            <button type="button" className="btn btn-quiet btn-sm" onClick={()=>openDocument(file,true)}><Download size={13}/> Download</button>
+          </div>
+        </div>)}
+      </div>}
+    <div className="form-note" style={{margin:'0 20px 12px'}}>
+      <ShieldCheck size={16}/>
+      <span>Only the applicant, application submitter, authorised current approver and administrators can access these files. File type is checked using its content signature.</span>
+    </div>
+  </section>
+}
+
 function ActivityIcon(){return <Clock3 size={18} className="muted-icon"/>}
 
 export function Approvals({user}) {
@@ -440,6 +582,7 @@ export function Approvals({user}) {
           {actions.length?<div className="timeline">{actions.map(a=><div className="timeline-item" key={a.actionId}><div className="timeline-dot"><Check size={13}/></div><div><b>{titleCase(a.actionType)}</b><small>{a.actionBy} · {dateTime(a.actionTime)}</small><p>{a.remarks}</p></div></div>)}</div>:<Empty title="No actions recorded" copy="No officer action has been recorded yet."/>}
         </section>
       </div>
+      <LoanDocuments loan={loan} user={user}/>
       {loan.status==='APPROVED'&&<section className="panel table-panel" style={{marginTop:18}}>
         <div className="panel-heading"><div><h3>Principal recovery</h3><p>Record repayments against this approved loan</p></div><Status value={eligibilitySnapshot?.recoveryThresholdMet?'70% FY RECOVERY MET':'70% FY RECOVERY PENDING'}/></div>
         <div className="detail-kv">
