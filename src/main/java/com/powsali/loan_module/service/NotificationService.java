@@ -64,10 +64,11 @@ public class NotificationService {
                     create(loan.getApplicant(), "Loan application forwarded",
                             loanNumber + " has been forwarded by DDO and is awaiting HOO review.",
                             "LOAN_FORWARDED", "LOAN_APPLICATION", loan.getId());
-                    users.findByRole(Role.HOO).forEach(user -> create(
-                            user, "Loan awaiting HOO review",
-                            loanNumber + " has been forwarded by DDO and is ready for your review.",
-                            "LOAN_FORWARDED", "LOAN_APPLICATION", loan.getId()));
+                    users.findByRole(Role.HOO).stream()
+                            .filter(user -> !user.getId().equals(loan.getApplicant().getId()))
+                            .forEach(user -> create(user, "Loan awaiting HOO review",
+                                    loanNumber + " has been forwarded by DDO and is ready for your review.",
+                                    "LOAN_FORWARDED", "LOAN_APPLICATION", loan.getId()));
                 }
                 case APPROVED -> create(loan.getApplicant(), "Loan application approved",
                         loanNumber + " has been approved by HOO.",
