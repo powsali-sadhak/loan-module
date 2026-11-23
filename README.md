@@ -152,6 +152,10 @@ spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect
 - Start production with `SPRING_PROFILES_ACTIVE=prod`, provide a strong `JWT_SECRET` of at least 32 bytes, and configure `CORS_ALLOWED_ORIGINS`. The production profile intentionally has no source-controlled JWT secret fallback.
 - CSRF is disabled because the API uses stateless bearer authentication. Serve the application over HTTPS in deployed environments.
 
+## Supporting loan documents
+
+See [docs/loan-documents.md](docs/loan-documents.md) for document upload endpoints, file validation, access rules and private storage configuration.
+
 ## Optional WhatsApp notifications (personal project)
 
 See [docs/whatsapp-notifications.md](docs/whatsapp-notifications.md) for the self-hosted Evolution API setup, local demo opt-in settings, environment variables and limitations.
