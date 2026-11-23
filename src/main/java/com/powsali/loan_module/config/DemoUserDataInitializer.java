@@ -16,7 +16,7 @@ import java.util.List;
  * All demo accounts use the same documented test password.
  */
 @Component
-@Profile("!prod")
+@Profile("local-demo")
 @RequiredArgsConstructor
 public class DemoUserDataInitializer implements CommandLineRunner {
 
