@@ -7,7 +7,6 @@ import lombok.Data;
 public class LoanActionDTO {
 
     private Long loanId;
-    private Long userId;
     private ActionType actionType;
     private String remarks;
 
