@@ -143,6 +143,15 @@ spring.jpa.hibernate.ddl-auto=update
 spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect
 ```
 
+## Authentication and security profiles
+
+- When no profile is specified, the application uses the `local-demo` profile for local development.
+- In `local-demo`, the user switcher sends `X-Demo-User-Id`. This is a development-only identity mechanism, not real authentication. Demo accounts and demo-user endpoints are disabled in production.
+- Any non-demo profile uses JWT bearer authentication. Only `POST /api/auth/login` and CORS preflight requests are public; other API requests require a valid token.
+- Method-level role checks are enabled. Loan actor identities are taken from the authenticated principal rather than request-supplied actor IDs, and employee loan reads are restricted to their own records.
+- Start production with `SPRING_PROFILES_ACTIVE=prod`, provide a strong `JWT_SECRET` of at least 32 bytes, and configure `CORS_ALLOWED_ORIGINS`. The production profile intentionally has no source-controlled JWT secret fallback.
+- CSRF is disabled because the API uses stateless bearer authentication. Serve the application over HTTPS in deployed environments.
+
 ## Optional WhatsApp notifications (personal project)
 
 See [docs/whatsapp-notifications.md](docs/whatsapp-notifications.md) for the self-hosted Evolution API setup, local demo opt-in settings, environment variables and limitations.
