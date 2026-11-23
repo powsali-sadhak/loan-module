@@ -169,7 +169,7 @@ export default function App() {
   return <div className="app-shell">
     <aside className={`sidebar ${menuOpen ? 'sidebar-open' : ''}`}>
       <div className="brand"><div className="brand-mark"><CreditCard size={21}/></div><div><b>LoanDesk</b><small>EMPLOYEE PORTAL</small></div><button className="icon-btn mobile-close" onClick={() => setMenuOpen(false)}><X size={18}/></button></div>
-      <div className="workspace-chip"><div className="workspace-icon">W</div><div><b>Workplace</b><small>West Bengal · Finance</small></div><ChevronDown size={15}/></div>
+      <div className="workspace-chip"><div className="workspace-icon">W</div><div><b>Demo workspace</b><small>Portfolio demo · Loan workflow</small></div><ChevronDown size={15}/></div>
       <div className="nav-groups">{visibleNav.map(group => <section key={group.label}><div className="nav-label">{group.label}</div>{group.items.map(item => { const Icon=item.icon; return <NavLink end={item.to === '/'} onClick={() => setMenuOpen(false)} className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`} to={item.to} key={item.to}><Icon size={18}/><span>{item.label}</span></NavLink>})}</section>)}</div>
       <div className="sidebar-bottom"><div className="help-card"><div className="help-icon"><CircleHelp size={18}/></div><b>Need a hand?</b><p>Our support team is here to help with your application.</p><NavLink to="/support">Visit support <ArrowUpRight size={13}/></NavLink></div><div className="sidebar-foot"><span className="online-dot"/> All systems operational <span>v1.0</span></div></div>
     </aside>
