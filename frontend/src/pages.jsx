@@ -237,6 +237,123 @@ export function Approvals({user}) {
   </>
 }
 
+
+export function RecoveryHistory({user}) {
+  const [records,setRecords]=useState([])
+  const [loading,setLoading]=useState(true)
+  const [error,setError]=useState('')
+  const [query,setQuery]=useState('')
+  const [fromDate,setFromDate]=useState('')
+  const [toDate,setToDate]=useState('')
+
+  async function load(){
+    setLoading(true)
+    setError('')
+    try{
+      const response=await api.get('/api/loans/recoveries',{params:{viewerId:user.id}})
+      setRecords(Array.isArray(response.data)?response.data:[])
+    }catch(e){
+      setError(friendlyError(e))
+      setRecords([])
+    }finally{
+      setLoading(false)
+    }
+  }
+
+  useEffect(()=>{load()},[user.id])
+
+  const totalRecovered=records.reduce((sum,item)=>sum+Number(item.recoveryAmount||0),0)
+  const distinctLoans=new Set(records.map(item=>item.loanId)).size
+  const distinctBorrowers=new Set(records.map(item=>item.applicantId)).size
+
+  const filtered=records.filter(item=>{
+    const receivedDate=String(item.receivedAt||'').slice(0,10)
+    const searchText=[
+      item.loanId,
+      item.repaymentId,
+      item.applicantName,
+      item.applicantRole,
+      item.applicantGroup,
+      item.recordedByName,
+      item.remarks
+    ].join(' ').toLowerCase()
+    return searchText.includes(query.toLowerCase())
+      &&(!fromDate||receivedDate>=fromDate)
+      &&(!toDate||receivedDate<=toDate)
+  })
+
+  function clearFilters(){
+    setQuery('')
+    setFromDate('')
+    setToDate('')
+  }
+
+  return <>
+    <PageHeader
+      eyebrow="FINANCE OPERATIONS"
+      title="Recovery history"
+      subtitle={user.role==='EMPLOYEE'
+        ?"Review principal repayments recorded against your loan applications."
+        :"Department-wide register of principal recovery transactions."}
+      action={<button className="btn btn-quiet" onClick={load} disabled={loading}><RefreshCw size={16}/> Refresh</button>}
+    />
+    {error&&<Alert>{error}</Alert>}
+    <div className="stats-grid">
+      <Stat label="Total recovered" value={loading?'—':money(totalRecovered)} detail="Recorded principal repayments" icon={Wallet} tone="green"/>
+      <Stat label="Recovery transactions" value={loading?'—':records.length} detail="Individual repayment entries" icon={Activity} tone="blue"/>
+      <Stat label="Loans with recovery" value={loading?'—':distinctLoans} detail="Unique loan applications" icon={FileText} tone="violet"/>
+      {user.role!=='EMPLOYEE'&&<Stat label="Borrowers" value={loading?'—':distinctBorrowers} detail="Employees and officers" icon={BadgeCheck} tone="amber"/>}
+    </div>
+    <section className="panel table-panel">
+      <div className="panel-heading">
+        <div><h3>Principal recovery register</h3><p>{user.role==='EMPLOYEE'?'Your repayment entries':'All repayment entries recorded across LoanDesk'}</p></div>
+        <span className="soft-tag">{filtered.length} records</span>
+      </div>
+      <div className="filter-bar">
+        <div className="search-field"><Search size={16}/><input aria-label="Search recovery records" placeholder="Search loan, borrower, officer or remarks…" value={query} onChange={e=>setQuery(e.target.value)}/></div>
+        <label className="field" style={{margin:0,minWidth:140}}><span>From date</span><input type="date" value={fromDate} onChange={e=>setFromDate(e.target.value)}/></label>
+        <label className="field" style={{margin:0,minWidth:140}}><span>To date</span><input type="date" min={fromDate||undefined} value={toDate} onChange={e=>setToDate(e.target.value)}/></label>
+        <button className="btn btn-quiet btn-sm" onClick={clearFilters}>Clear filters</button>
+      </div>
+      {loading?<Spinner/>:filtered.length===0
+        ?<Empty title={records.length?'No matching recovery entries':'No recovery entries yet'} copy={records.length?'Try changing the search text or date range.':'Once a DDO or HOO records a principal repayment, it will appear here.'}/>
+        :<div className="table-scroll">
+          <table>
+            <thead><tr>
+              <th>RECEIVED ON</th>
+              <th>RECOVERY REF</th>
+              <th>LOAN APPLICATION</th>
+              <th>BORROWER</th>
+              <th>GROUP</th>
+              <th>LOAN PRINCIPAL</th>
+              <th>RECOVERED</th>
+              <th>RECORDED BY</th>
+              <th>REMARKS</th>
+            </tr></thead>
+            <tbody>
+              {filtered.map(item=><tr key={item.repaymentId}>
+                <td>{dateTime(item.receivedAt)}</td>
+                <td className="id-link">REC-{String(item.repaymentId).padStart(5,'0')}</td>
+                <td><Link className="id-link" to={`/loans/${item.loanId}`}>LN-{String(item.loanId).padStart(5,'0')}</Link></td>
+                <td><b>{item.applicantName||`User ${item.applicantId}`}</b><small style={{display:'block',color:'#99a3b1',marginTop:4}}>{titleCase(item.applicantRole)}</small></td>
+                <td>{item.applicantGroup||'—'}</td>
+                <td>{money(item.loanAmount)}</td>
+                <td className="amount-cell">{money(item.recoveryAmount)}</td>
+                <td>{item.recordedByName||'—'}</td>
+                <td className="purpose-cell">{item.remarks||'—'}</td>
+              </tr>)}
+            </tbody>
+          </table>
+        </div>
+      }
+      {!loading&&filtered.length>0&&<div className="form-actions" style={{padding:'14px 20px',borderTop:'1px solid #eef1f5',justifyContent:'space-between'}}>
+        <small style={{color:'#8d99aa'}}>Showing {filtered.length} of {records.length} recovery entries</small>
+        <b>Total in view: {money(filtered.reduce((sum,item)=>sum+Number(item.recoveryAmount||0),0))}</b>
+      </div>}
+    </section>
+  </>
+}
+
 export function Support({user}) {
   const [tickets,setTickets]=useState([]),[loading,setLoading]=useState(true),[error,setError]=useState(''),[showForm,setShowForm]=useState(false),[form,setForm]=useState({category:'OTHER',subject:'',description:'',priority:'MEDIUM',loanId:''})
   async function load(){setLoading(true);try{const r=await api.get('/api/support/tickets/my');setTickets(Array.isArray(r.data)?r.data:[]);setError('')}catch(e){setError(friendlyError(e))}finally{setLoading(false)}}
