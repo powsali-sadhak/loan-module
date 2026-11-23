@@ -13,42 +13,63 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class LoanService {
 
+    private static final Set<Role> APPLICANT_ROLES =
+            Set.of(Role.EMPLOYEE, Role.DDO, Role.HOO);
+
     private final LoanRepository loanRepository;
     private final UserRepository userRepository;
     private final ApprovalWorkflowRepository workflowRepository;
+    private final LoanEligibilityService eligibilityService;
 
     @Transactional
     public LoanApplication applyLoan(Long applicantId, Long appliedById, Double amount, String purpose) {
         User applicant = userRepository.findById(applicantId)
                 .orElseThrow(() -> new IllegalArgumentException("Applicant not found"));
         User appliedBy = userRepository.findById(appliedById)
-                .orElseThrow(() -> new IllegalArgumentException("Authenticated applicant/submitter not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Applicant/submitter not found"));
 
-        if (appliedBy.getRole() == Role.EMPLOYEE && !applicant.getId().equals(appliedBy.getId())) {
-            throw new IllegalStateException("Employees can only submit loan applications for themselves");
+        if (!APPLICANT_ROLES.contains(applicant.getRole())) {
+            throw new IllegalStateException("Only EMPLOYEE, DDO and HOO users can apply for a loan");
         }
-        if (appliedBy.getRole() != Role.EMPLOYEE && appliedBy.getRole() != Role.DDO) {
-            throw new IllegalStateException("Only employees and DDO users can submit loan applications");
+
+        if (!APPLICANT_ROLES.contains(appliedBy.getRole())) {
+            throw new IllegalStateException("Only EMPLOYEE, DDO and HOO users can submit a loan application");
         }
-        if (amount == null || amount <= 0) {
-            throw new IllegalArgumentException("Loan amount must be greater than zero");
+
+        if ((appliedBy.getRole() == Role.EMPLOYEE || appliedBy.getRole() == Role.HOO)
+                && !applicant.getId().equals(appliedBy.getId())) {
+            throw new IllegalStateException(
+                    appliedBy.getRole() + " users can only submit applications for themselves");
         }
+
         if (purpose == null || purpose.isBlank()) {
             throw new IllegalArgumentException("Loan purpose is required");
         }
 
+        // Applies equally to employee, DDO and HOO applicants using their service group.
+        eligibilityService.validateApplication(applicant, amount, null);
+
         ApprovalWorkflow workflow = workflowRepository.findFirstByActiveTrueOrderByIdAsc()
                 .orElseThrow(() -> new IllegalStateException("No active approval workflow is configured"));
+
         ApprovalStep firstStep = workflow.getSteps().stream()
+                .sorted(Comparator.comparing(ApprovalStep::getStepOrder))
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("The active workflow has no approval steps"));
+
+        if (firstStep.getApproverRole() != Role.DDO) {
+            throw new IllegalStateException(
+                    "The first approval step must be DDO so officer applicants can be reviewed by another DDO");
+        }
 
         LoanApplication loan = LoanApplication.builder()
                 .applicant(applicant)
