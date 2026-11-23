@@ -1,0 +1,41 @@
+name: LoanDesk build
+
+on:
+  push:
+    branches:
+      - feature/loan-management-frontend
+  pull_request:
+    branches:
+      - feature/dynamic-approval-workflow
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Build Spring Boot backend
+        run: bash ./mvnw -B -Dmaven.test.skip=true package
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package.json
+
+      - name: Build React frontend
+        working-directory: frontend
+        run: |
+          npm install
+          npm run build
