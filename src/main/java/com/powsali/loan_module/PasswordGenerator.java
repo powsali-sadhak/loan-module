@@ -27,7 +27,7 @@ public class PasswordGenerator {
             String encoded = new BCryptPasswordEncoder().encode(new String(password));
             System.out.println(encoded);
         } finally {
-            Arrays.fill(password, '\\0');
+            Arrays.fill(password, (char) 0);
         }
     }
 }
