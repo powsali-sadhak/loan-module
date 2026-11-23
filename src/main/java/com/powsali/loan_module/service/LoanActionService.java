@@ -135,7 +135,7 @@ public class LoanActionService {
         LoanApplication loan = loanRepository.findById(loanId)
                 .orElseThrow(() -> new IllegalArgumentException("Loan not found"));
 
-        User applicant = userRepository.findById(applicantId)
+        User applicant = userRepository.findByIdForUpdate(applicantId)
                 .orElseThrow(() -> new IllegalArgumentException("Applicant not found"));
 
         if (!APPLICANT_ROLES.contains(applicant.getRole())) {
