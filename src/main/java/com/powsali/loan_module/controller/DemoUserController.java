@@ -16,7 +16,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/demo/users")
-@Profile("local-demo")
+@Profile("local-demo & !prod")
 @RequiredArgsConstructor
 public class DemoUserController {
 
