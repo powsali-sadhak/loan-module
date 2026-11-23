@@ -25,6 +25,7 @@ public class NotificationService {
 
     private final UserNotificationRepository notifications;
     private final UserRepository users;
+    private final WhatsAppNotificationService whatsAppNotifications;
 
     /**
      * Notify the loan applicant and all DDO/HOO users when an application is
@@ -170,6 +171,9 @@ public class NotificationService {
         notification.setReferenceType(referenceType);
         notification.setReferenceId(referenceId);
         notifications.save(notification);
+        // Delivery failures are isolated inside WhatsAppNotificationService and
+        // must never roll back the underlying loan/support transaction.
+        whatsAppNotifications.send(recipient, title, message);
     }
 
     private NotificationResponseDTO toResponse(UserNotification notification) {
