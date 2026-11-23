@@ -474,6 +474,7 @@ export function RecoveryHistory({user}) {
   const [error,setError]=useState('')
   const [success,setSuccess]=useState('')
   const [query,setQuery]=useState('')
+  const [loanIdQuery,setLoanIdQuery]=useState('')
   const [fromDate,setFromDate]=useState('')
   const [toDate,setToDate]=useState('')
   const [monthlyAmounts,setMonthlyAmounts]=useState({})
@@ -547,13 +548,20 @@ export function RecoveryHistory({user}) {
     }
   }
 
+  // Accept IDs such as LN-00003, 00003 or 3; multiple IDs may be comma/space separated.
+  const loanIdTokens=loanIdQuery.split(/[,;\\s]+/)
+    .map(value=>value.trim().toUpperCase().replace(/^LN[-_]?/,'').replace(/^0+(?=\\d)/,''))
+    .filter(Boolean)
+  const matchesLoanId=loanId=>loanIdTokens.length===0||loanIdTokens.includes(String(Number(loanId)))
+
   const filteredSchedules=scheduleRows.filter(item=>{
     const dueDate=String(item.dueDate||'').slice(0,10)
     const searchText=[
-      item.loanId,item.applicantName,item.applicantRole,item.applicantGroup,
+      item.applicantName,item.applicantRole,item.applicantGroup,
       item.installmentNumber,item.status
     ].join(' ').toLowerCase()
-    return searchText.includes(query.toLowerCase())
+    return matchesLoanId(item.loanId)
+      &&searchText.includes(query.toLowerCase())
       &&(!fromDate||dueDate>=fromDate)
       &&(!toDate||dueDate<=toDate)
   })
@@ -561,10 +569,11 @@ export function RecoveryHistory({user}) {
   const filtered=records.filter(item=>{
     const receivedDate=String(item.receivedAt||'').slice(0,10)
     const searchText=[
-      item.loanId,item.repaymentId,item.applicantName,item.applicantRole,
+      item.repaymentId,item.applicantName,item.applicantRole,
       item.applicantGroup,item.recordedByName,item.remarks
     ].join(' ').toLowerCase()
-    return searchText.includes(query.toLowerCase())
+    return matchesLoanId(item.loanId)
+      &&searchText.includes(query.toLowerCase())
       &&(!fromDate||receivedDate>=fromDate)
       &&(!toDate||receivedDate<=toDate)
   })
@@ -594,6 +603,7 @@ export function RecoveryHistory({user}) {
 
   function clearFilters(){
     setQuery('')
+    setLoanIdQuery('')
     setFromDate('')
     setToDate('')
   }
@@ -673,8 +683,14 @@ export function RecoveryHistory({user}) {
         <div><h3>Recovery by loan number</h3><p>Each loan has its own instalment schedule and payment history.</p></div>
         <span className="soft-tag">{recoveryGroups.length} loans</span>
       </div>
+      <div className="filter-bar" style={{paddingBottom:8}}>
+        <div className="search-field" style={{maxWidth:'none',flex:'1 1 280px'}}>
+          <Search size={16}/>
+          <input aria-label="Search by loan IDs" placeholder="Search by loan ID(s): LN-00003, LN-00007" value={loanIdQuery} onChange={e=>setLoanIdQuery(e.target.value)}/>
+        </div>
+      </div>
       <div className="filter-bar">
-        <div className="search-field"><Search size={16}/><input aria-label="Search recovery records" placeholder="Search loan, borrower, status or officer…" value={query} onChange={e=>setQuery(e.target.value)}/></div>
+        <div className="search-field"><Search size={16}/><input aria-label="Search borrower or recovery details" placeholder="Search borrower, status, officer or remarks…" value={query} onChange={e=>setQuery(e.target.value)}/></div>
         <label className="field" style={{margin:0,minWidth:140}}><span>From date</span><input type="date" value={fromDate} onChange={e=>setFromDate(e.target.value)}/></label>
         <label className="field" style={{margin:0,minWidth:140}}><span>To date</span><input type="date" min={fromDate||undefined} value={toDate} onChange={e=>setToDate(e.target.value)}/></label>
         <button className="btn btn-quiet btn-sm" onClick={clearFilters}>Clear filters</button>
