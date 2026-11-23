@@ -1,9 +1,9 @@
-
 package com.powsali.loan_module.security;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
@@ -16,17 +16,24 @@ import java.util.Map;
 @Component
 public class JwtUtil {
 
-    // Local development key only. Keep production secrets outside source code.
-    private static final String SECRET_KEY =
-            "loan-module-local-dev-signing-key-2026-very-long";
+    private final SecretKey signingKey;
+    private final long expirationTime;
 
-    private static final long EXPIRATION_TIME =
-            1000L * 60 * 60 * 10;
+    public JwtUtil(
+            @Value("${app.jwt.secret}") String secret,
+            @Value("${app.jwt.expiration-ms:36000000}") long expirationTime) {
 
-    private final SecretKey signingKey =
-            Keys.hmacShaKeyFor(
-                    SECRET_KEY.getBytes(StandardCharsets.UTF_8)
-            );
+        if (secret == null || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalArgumentException(
+                    "app.jwt.secret must contain at least 32 bytes. Configure JWT_SECRET before startup.");
+        }
+        if (expirationTime < 60000L) {
+            throw new IllegalArgumentException("JWT expiration must be at least 60 seconds.");
+        }
+
+        this.signingKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        this.expirationTime = expirationTime;
+    }
 
     public String generateToken(UserDetails userDetails) {
         Map<String, Object> claims = new HashMap<>();
@@ -40,7 +47,7 @@ public class JwtUtil {
                 .claims(claims)
                 .subject(subject)
                 .issuedAt(now)
-                .expiration(new Date(now.getTime() + EXPIRATION_TIME))
+                .expiration(new Date(now.getTime() + expirationTime))
                 .signWith(signingKey)
                 .compact();
     }
@@ -50,16 +57,12 @@ public class JwtUtil {
     }
 
     public Boolean isTokenExpired(String token) {
-        return extractClaims(token)
-                .getExpiration()
-                .before(new Date());
+        return extractClaims(token).getExpiration().before(new Date());
     }
 
     public Boolean validateToken(String token, UserDetails userDetails) {
         String username = extractUsername(token);
-
-        return username.equals(userDetails.getUsername())
-                && !isTokenExpired(token);
+        return username.equals(userDetails.getUsername()) && !isTokenExpired(token);
     }
 
     private Claims extractClaims(String token) {
