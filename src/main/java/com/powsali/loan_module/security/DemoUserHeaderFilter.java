@@ -21,7 +21,7 @@ import java.io.IOException;
  * Never register this filter in production: the demo header is not proof of identity.
  */
 @Component
-@Profile("local-demo")
+@Profile("local-demo & !prod")
 @RequiredArgsConstructor
 public class DemoUserHeaderFilter extends OncePerRequestFilter {
 
