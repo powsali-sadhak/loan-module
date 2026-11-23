@@ -355,20 +355,298 @@ export function RecoveryHistory({user}) {
 }
 
 export function Support({user}) {
-  const [tickets,setTickets]=useState([]),[loading,setLoading]=useState(true),[error,setError]=useState(''),[showForm,setShowForm]=useState(false),[form,setForm]=useState({category:'OTHER',subject:'',description:'',priority:'MEDIUM',loanId:''})
-  async function load(){setLoading(true);try{const r=await api.get('/api/support/tickets/my');setTickets(Array.isArray(r.data)?r.data:[]);setError('')}catch(e){setError(friendlyError(e))}finally{setLoading(false)}}
-  useEffect(()=>{load()},[user.id])
-  async function closeTicket(ticketId){
-    try{
-      await api.patch(`/api/support/tickets/${ticketId}/status`,{status:'CLOSED'})
-      await load()
-    }catch(e){setError(friendlyError(e))}
-  }
-  async function create(e){e.preventDefault();try{const body={...form,loanId:form.loanId?Number(form.loanId):null};await api.post('/api/support/tickets',body);setShowForm(false);setForm({category:'OTHER',subject:'',description:'',priority:'MEDIUM',loanId:''});await load()}catch(e){setError(friendlyError(e))}}
-  const staff=['SUPPORT','ADMIN'].includes(user.role)
-  return <><PageHeader eyebrow="HELP & SUPPORT" title="Support centre" subtitle="Get help with your loan applications, account or portal access." action={<button className="btn btn-primary" onClick={()=>setShowForm(!showForm)}><Plus size={16}/> Raise a ticket</button>}/>{error&&<Alert>{error}</Alert>}{showForm&&<form className="panel ticket-form" onSubmit={create}><div className="panel-heading"><div><h3>New support request</h3><p>Our team will get back to you through this ticket.</p></div><button type="button" className="icon-btn" onClick={()=>setShowForm(false)}><X size={17}/></button></div><div className="form-grid"><label className="field"><span>Category</span><select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>{['LOGIN_ACCESS','EMPLOYEE_DETAILS','LOAN_SUBMISSION','ELIGIBILITY','DOCUMENT_UPLOAD','APPLICATION_STATUS','OTHER'].map(x=><option key={x} value={x}>{titleCase(x)}</option>)}</select></label><label className="field"><span>Priority</span><select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})}>{['LOW','MEDIUM','HIGH','URGENT'].map(x=><option key={x}>{x}</option>)}</select></label><label className="field full"><span>Subject</span><input required value={form.subject} onChange={e=>setForm({...form,subject:e.target.value})} placeholder="What do you need help with?"/></label><label className="field"><span>Loan ID (optional)</span><input type="number" value={form.loanId} onChange={e=>setForm({...form,loanId:e.target.value})} placeholder="e.g. 12"/></label><label className="field full"><span>Description</span><textarea required rows="3" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Describe the issue in a little more detail…"/></label></div><div className="form-actions"><button className="btn btn-primary"><Send size={15}/> Submit ticket</button></div></form>}<section className="panel table-panel"><div className="panel-heading"><div><h3>{staff?'Your tickets':'My support tickets'}</h3><p>Track the status of each service request</p></div><button className="btn btn-quiet btn-sm" onClick={load}><RefreshCw size={15}/> Refresh</button></div>{loading?<Spinner/>:tickets.length?<div className="ticket-list">{tickets.map(t=><div className="ticket-row" key={t.id}><div className="ticket-symbol"><MessageSquare size={18}/></div><div className="ticket-main"><b>{t.subject}</b><small>{t.ticketNumber||`Ticket #${t.id}`} · {titleCase(t.category)} · {dateTime(t.createdAt)}</small></div><Status value={t.status}/><span className="priority">{titleCase(t.priority)}</span>{t.status==='RESOLVED'&&<button type="button" className="btn btn-quiet btn-sm" onClick={()=>closeTicket(t.id)}>Close ticket</button>}</div>)}</div>:<Empty title="No support tickets" copy="Need a hand? Raise a ticket and our support team will take it from there."/>}</section></>
-}
+  const [tickets,setTickets]=useState([])
+  const [selectedTicket,setSelectedTicket]=useState(null)
+  const [loading,setLoading]=useState(true)
+  const [busy,setBusy]=useState(false)
+  const [error,setError]=useState('')
+  const [success,setSuccess]=useState('')
+  const [showForm,setShowForm]=useState(false)
+  const [query,setQuery]=useState('')
+  const [statusFilter,setStatusFilter]=useState('ALL')
+  const [reply,setReply]=useState('')
+  const [form,setForm]=useState({
+    category:'OTHER',
+    subject:'',
+    description:'',
+    priority:'MEDIUM',
+    loanId:''
+  })
 
+  async function load(showSpinner=true) {
+    if(showSpinner)setLoading(true)
+    try {
+      const response=await api.get('/api/support/tickets/my')
+      const rows=Array.isArray(response.data)?response.data:[]
+      setTickets(rows)
+      setSelectedTicket(current=>current
+        ? rows.find(ticket=>ticket.id===current.id)||current
+        : null)
+      setError('')
+    } catch(e) {
+      setError(friendlyError(e))
+    } finally {
+      if(showSpinner)setLoading(false)
+    }
+  }
+
+  useEffect(()=>{
+    load()
+    const refreshId=setInterval(()=>load(false),15000)
+    return ()=>clearInterval(refreshId)
+  },[user.id])
+
+  async function openTicket(ticketId) {
+    setError('')
+    setSuccess('')
+    try {
+      const response=await api.get(`/api/support/tickets/${ticketId}`)
+      setSelectedTicket(response.data)
+    } catch(e) {
+      setError(friendlyError(e))
+    }
+  }
+
+  async function create(e) {
+    e.preventDefault()
+    setBusy(true)
+    setError('')
+    setSuccess('')
+    try {
+      const body={
+        ...form,
+        loanId:form.loanId?Number(form.loanId):null
+      }
+      const response=await api.post('/api/support/tickets',body)
+      const created=response.data
+      setTickets(current=>[created,...current.filter(ticket=>ticket.id!==created.id)])
+      setSelectedTicket(created)
+      setShowForm(false)
+      setForm({category:'OTHER',subject:'',description:'',priority:'MEDIUM',loanId:''})
+      setSuccess(`Ticket ${created.ticketNumber} submitted. You can track its status and updates below.`)
+      await load(false)
+      setSelectedTicket(created)
+    } catch(e) {
+      setError(friendlyError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function closeTicket(ticketId) {
+    setBusy(true)
+    setError('')
+    setSuccess('')
+    try {
+      await api.patch(`/api/support/tickets/${ticketId}/status`,{status:'CLOSED'})
+      setSuccess('Ticket closed successfully.')
+      await load(false)
+      await openTicket(ticketId)
+    } catch(e) {
+      setError(friendlyError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function addReply(e) {
+    e.preventDefault()
+    if(!selectedTicket||!reply.trim())return
+    setBusy(true)
+    setError('')
+    setSuccess('')
+    try {
+      await api.post(`/api/support/tickets/${selectedTicket.id}/comments`,{
+        body:reply.trim(),
+        internalNote:false
+      })
+      setReply('')
+      await load(false)
+      await openTicket(selectedTicket.id)
+      setSuccess('Your reply was added to the ticket.')
+    } catch(e) {
+      setError(friendlyError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const count=status=>tickets.filter(ticket=>ticket.status===status).length
+  const resolvedCount=count('RESOLVED')+count('CLOSED')
+  const filtered=tickets.filter(ticket=>{
+    const matchesStatus=statusFilter==='ALL'||ticket.status===statusFilter
+    const searchText=[
+      ticket.ticketNumber,ticket.subject,ticket.category,ticket.priority,
+      ticket.status,ticket.assigneeName,ticket.loanId
+    ].join(' ').toLowerCase()
+    return matchesStatus&&searchText.includes(query.toLowerCase())
+  })
+  const stages=['OPEN','ASSIGNED','IN_PROGRESS','RESOLVED','CLOSED']
+  const currentStage=selectedTicket?stages.indexOf(selectedTicket.status):-1
+
+  function eventTitle(item) {
+    if(item.eventType==='CREATED')return 'Ticket submitted'
+    if(item.eventType==='ASSIGNED')return 'Assigned to support'
+    if(item.eventType==='REASSIGNED')return 'Support officer changed'
+    if(item.eventType==='STATUS_CHANGED')return 'Status updated'
+    return titleCase(item.eventType)
+  }
+
+  return <>
+    <PageHeader
+      eyebrow="HELP & SUPPORT"
+      title="Support centre"
+      subtitle="Raise requests and track every ticket from submission through resolution."
+      action={<button className="btn btn-primary" onClick={()=>setShowForm(value=>!value)}><Plus size={16}/> Raise a ticket</button>}
+    />
+    {error&&<Alert>{error}</Alert>}
+    {success&&<Alert type="success">{success}</Alert>}
+
+    <div className="stats-grid">
+      <Stat label="All my tickets" value={loading?'—':tickets.length} detail="Requests submitted" icon={MessageSquare}/>
+      <Stat label="Open / pending" value={loading?'—':count('OPEN')} detail="Awaiting assignment" icon={Clock3} tone="amber"/>
+      <Stat label="Being handled" value={loading?'—':count('ASSIGNED')+count('IN_PROGRESS')} detail="Assigned or in progress" icon={Activity} tone="blue"/>
+      <Stat label="Resolved / closed" value={loading?'—':resolvedCount} detail="Completed requests" icon={CheckCircle2} tone="green"/>
+    </div>
+
+    {showForm&&<form className="panel ticket-form" onSubmit={create}>
+      <div className="panel-heading">
+        <div><h3>New support request</h3><p>After submission, your ticket will appear below with a tracking number and live status.</p></div>
+        <button type="button" className="icon-btn" onClick={()=>setShowForm(false)}><X size={17}/></button>
+      </div>
+      <div className="form-grid">
+        <label className="field"><span>Category</span><select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>{['LOGIN_ACCESS','EMPLOYEE_DETAILS','LOAN_SUBMISSION','ELIGIBILITY','DOCUMENT_UPLOAD','APPLICATION_STATUS','OTHER'].map(value=><option key={value} value={value}>{titleCase(value)}</option>)}</select></label>
+        <label className="field"><span>Priority</span><select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})}>{['LOW','MEDIUM','HIGH','URGENT'].map(value=><option key={value}>{value}</option>)}</select></label>
+        <label className="field full"><span>Subject</span><input required maxLength="180" value={form.subject} onChange={e=>setForm({...form,subject:e.target.value})} placeholder="What do you need help with?"/></label>
+        <label className="field"><span>Loan ID (optional)</span><input type="number" min="1" value={form.loanId} onChange={e=>setForm({...form,loanId:e.target.value})} placeholder="e.g. 12"/></label>
+        <label className="field full"><span>Description</span><textarea required rows="3" maxLength="5000" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Describe the issue in a little more detail…"/></label>
+      </div>
+      <div className="form-actions"><button className="btn btn-primary" disabled={busy}><Send size={15}/> {busy?'Submitting…':'Submit ticket'}</button></div>
+    </form>}
+
+    <div className="detail-grid">
+      <section className="panel table-panel">
+        <div className="panel-heading">
+          <div><h3>My support tickets</h3><p>Every ticket you have submitted, including resolved and closed requests</p></div>
+          <button className="btn btn-quiet btn-sm" onClick={()=>load()} disabled={loading}><RefreshCw size={15}/> Refresh</button>
+        </div>
+        <div className="filter-bar" style={{padding:'0 0 14px',flexWrap:'wrap'}}>
+          <div className="search-field" style={{maxWidth:'none',flexBasis:'100%'}}><Search size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search ticket number, subject or linked loan…"/></div>
+          <select className="select-control" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
+            {['ALL','OPEN','ASSIGNED','IN_PROGRESS','RESOLVED','CLOSED'].map(value=><option key={value} value={value}>{value==='ALL'?'All statuses':value==='OPEN'?'Open / pending':titleCase(value)}</option>)}
+          </select>
+        </div>
+        {loading?<Spinner/>:filtered.length===0
+          ?<Empty title={tickets.length?'No matching tickets':'No support tickets yet'} copy={tickets.length?'Try another status or search term.':'When you raise a ticket, its tracking details and status will appear here.'}/>
+          :<div className="ticket-list" style={{padding:0}}>
+            {filtered.map(ticket=><button
+              key={ticket.id}
+              type="button"
+              onClick={()=>openTicket(ticket.id)}
+              className="ticket-row"
+              style={{
+                display:'flex',width:'100%',textAlign:'left',background:selectedTicket?.id===ticket.id?'#f3f5ff':'transparent',
+                border:0,borderTop:'1px solid #eff1f5',cursor:'pointer',padding:'13px 8px',borderRadius:7
+              }}
+            >
+              <div className="ticket-symbol"><MessageSquare size={18}/></div>
+              <div className="ticket-main">
+                <b>{ticket.subject}</b>
+                <small>{ticket.ticketNumber} · {titleCase(ticket.category)} · {dateTime(ticket.createdAt)}</small>
+                <small>{ticket.assigneeName? `Assigned to ${ticket.assigneeName}`:'Awaiting assignment'} · Updated {dateTime(ticket.updatedAt)}</small>
+              </div>
+              <Status value={ticket.status}/>
+              <ChevronRight size={16}/>
+            </button>)}
+          </div>
+        }
+      </section>
+
+      <section className="panel detail-main">
+        {!selectedTicket
+          ?<Empty title="Select a ticket to track" copy="Choose one of your requests to see its current status, assigned officer, replies, resolution and full activity timeline."/>
+          :<>
+            <div className="panel-heading">
+              <div>
+                <div className="eyebrow">{selectedTicket.ticketNumber}</div>
+                <h3>{selectedTicket.subject}</h3>
+                <p>Submitted {dateTime(selectedTicket.createdAt)} · Last updated {dateTime(selectedTicket.updatedAt)}</p>
+              </div>
+              <Status value={selectedTicket.status}/>
+            </div>
+
+            <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:12,margin:'16px 0'}}>
+              <div><small style={{display:'block',color:'#98a1af'}}>CATEGORY</small><b>{titleCase(selectedTicket.category)}</b></div>
+              <div><small style={{display:'block',color:'#98a1af'}}>PRIORITY</small><b>{titleCase(selectedTicket.priority)}</b></div>
+              <div><small style={{display:'block',color:'#98a1af'}}>ASSIGNED OFFICER</small><b>{selectedTicket.assigneeName||'Not assigned yet'}</b></div>
+              <div><small style={{display:'block',color:'#98a1af'}}>LINKED LOAN</small><b>{selectedTicket.loanId?`LN-${String(selectedTicket.loanId).padStart(5,'0')}`:'Not linked'}</b></div>
+            </div>
+
+            <div className="detail-purpose">
+              <small>REQUEST DESCRIPTION</small>
+              <p style={{whiteSpace:'pre-wrap'}}>{selectedTicket.description}</p>
+            </div>
+
+            <div className="steps-editor">
+              <div className="steps-heading"><span>REQUEST PROGRESS</span></div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(5,minmax(0,1fr))',gap:4,margin:'12px 0 8px'}}>
+                {stages.map((stage,index)=>{
+                  const completed=currentStage>=index
+                  return <div key={stage} style={{textAlign:'center',minWidth:0}}>
+                    <div style={{height:5,borderRadius:5,background:completed?'#16a477':'#e8edf4',marginBottom:7}}/>
+                    <small style={{fontSize:8,color:completed?'#267b61':'#98a1af',fontWeight:completed?700:400}}>{stage==='OPEN'?'OPEN':stage==='IN_PROGRESS'?'IN PROGRESS':stage}</small>
+                  </div>
+                })}
+              </div>
+              <p style={{fontSize:10,color:'#748198',margin:'8px 0 0'}}>Current state: <b>{selectedTicket.status==='OPEN'?'Open · Pending assignment':titleCase(selectedTicket.status)}</b></p>
+            </div>
+
+            {selectedTicket.resolution&&<div className="form-note" style={{marginTop:15}}>
+              <CheckCircle2 size={18}/>
+              <span><b>Resolution summary</b><br/>{selectedTicket.resolution}<br/><small>Resolved {dateTime(selectedTicket.resolvedAt)}</small></span>
+            </div>}
+
+            <div className="steps-editor">
+              <div className="steps-heading"><span>STATUS & ASSIGNMENT HISTORY</span></div>
+              {selectedTicket.activities?.length
+                ?<div className="timeline">{selectedTicket.activities.map(item=><div className="timeline-item" key={item.id}>
+                  <div className="timeline-dot"><Check size={12}/></div>
+                  <div>
+                    <b>{eventTitle(item)}</b>
+                    <small>{item.actorName} · {dateTime(item.createdAt)}</small>
+                    {item.fromStatus&&<small>{titleCase(item.fromStatus)} → {titleCase(item.toStatus)}</small>}
+                    {item.message&&<p>{item.message}</p>}
+                  </div>
+                </div>)}</div>
+                :<p style={{fontSize:10,color:'#98a1af'}}>No status history is available for this ticket yet. Refresh to load the latest state.</p>
+              }
+            </div>
+
+            <div className="steps-editor">
+              <div className="steps-heading"><span>REPLIES FROM SUPPORT</span></div>
+              {selectedTicket.comments?.length
+                ?<div className="timeline">{selectedTicket.comments.map(item=><div className="timeline-item" key={item.id}>
+                  <div className="timeline-dot"><MessageSquare size={12}/></div>
+                  <div><b>{item.authorName}</b><small>{dateTime(item.createdAt)}</small><p style={{whiteSpace:'pre-wrap'}}>{item.body}</p></div>
+                </div>)}</div>
+                :<p style={{fontSize:10,color:'#98a1af'}}>No replies have been added yet.</p>
+              }
+              {selectedTicket.status!=='CLOSED'&&<form onSubmit={addReply} className="ticket-form" style={{padding:'10px 0 0'}}>
+                <label className="field"><span>Send a reply</span><textarea rows="3" value={reply} onChange={e=>setReply(e.target.value)} placeholder="Add more information or reply to the support team…"/></label>
+                <div className="form-actions" style={{padding:0}}><button className="btn btn-primary" disabled={busy||!reply.trim()}><Send size={14}/> Send reply</button></div>
+              </form>}
+            </div>
+
+            {selectedTicket.status==='RESOLVED'&&<div className="form-actions" style={{justifyContent:'flex-start'}}>
+              <button className="btn btn-primary" disabled={busy} onClick={()=>closeTicket(selectedTicket.id)}><CheckCircle2 size={15}/> Confirm and close ticket</button>
+            </div>}
+            {selectedTicket.status==='CLOSED'&&<Alert type="success">This ticket is closed. Its details and full history remain available here.</Alert>}
+          </>
+        }
+      </section>
+    </div>
+  </>
+}
 
 export function SupportDesk({user}) {
   const [tickets,setTickets]=useState([])
