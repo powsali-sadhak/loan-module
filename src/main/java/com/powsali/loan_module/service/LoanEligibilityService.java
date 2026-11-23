@@ -2,7 +2,6 @@ package com.powsali.loan_module.service;
 
 import com.powsali.loan_module.dto.LoanEligibilityResponse;
 import com.powsali.loan_module.entity.LoanApplication;
-import com.powsali.loan_module.entity.LoanRepayment;
 import com.powsali.loan_module.entity.User;
 import com.powsali.loan_module.entity.enums.LoanStatus;
 import com.powsali.loan_module.repository.LoanRepaymentRepository;
@@ -49,7 +48,7 @@ public class LoanEligibilityService {
 
         if (snapshot.availableAmount().compareTo(ONE_LAKH) < 0) {
             if (!snapshot.recoveryThresholdMet()) {
-                message = "Your annual loan entitlement is exhausted. At least 70% of the principal already availed this financial year must be recovered before another application can be submitted.";
+                message = "Your loan entitlement is exhausted. At least 70% of the principal already availed must be recovered before another application can be submitted.";
             } else {
                 message = "Your currently available loan entitlement is below the minimum application amount.";
             }
@@ -65,7 +64,9 @@ public class LoanEligibilityService {
                 snapshot.financialYear(),
                 snapshot.groupLimit(),
                 snapshot.annualApplied(),
-                snapshot.principalRecovered(),
+                snapshot.annualPrincipalRecovered(),
+                snapshot.totalPrincipalApplied(),
+                snapshot.totalPrincipalRecovered(),
                 snapshot.outstandingPrincipal(),
                 snapshot.availableAmount(),
                 ONE_LAKH,
@@ -76,8 +77,7 @@ public class LoanEligibilityService {
 
     @Transactional(readOnly = true)
     public void validateApplication(User applicant, Double requestedAmount, Long excludedLoanId) {
-        if (requestedAmount == null || requestedAmount.isNaN()
-                || requestedAmount.isInfinite()) {
+        if (requestedAmount == null || !Double.isFinite(requestedAmount)) {
             throw new IllegalArgumentException("A valid loan amount is required");
         }
 
@@ -92,13 +92,14 @@ public class LoanEligibilityService {
         if (amount.compareTo(snapshot.groupLimit()) > 0) {
             throw new IllegalArgumentException(
                     "Your Group " + applicant.getServiceGroup()
-                            + " maximum loan amount per application is " + snapshot.groupLimit().toPlainString());
+                            + " maximum loan amount per application is ₹"
+                            + snapshot.groupLimit().toPlainString());
         }
 
         if (amount.compareTo(snapshot.availableAmount()) > 0) {
             if (!snapshot.recoveryThresholdMet()) {
                 throw new IllegalStateException(
-                        "Your annual loan entitlement is exhausted. At least 70% of the principal already availed this financial year must be recovered before another application can be submitted.");
+                        "Your loan entitlement is exhausted. At least 70% of the principal already availed must be recovered before another application can be submitted.");
             }
             throw new IllegalStateException(
                     "The requested amount exceeds your currently available entitlement of ₹"
@@ -128,54 +129,89 @@ public class LoanEligibilityService {
         LocalDateTime end = LocalDate.of(financialYearStart + 1, 4, 1).atStartOfDay();
         String financialYear = financialYearStart + "-" + (financialYearStart + 1);
 
-        List<LoanApplication> currentYearLoans = loanRepository.findByApplicant(applicant)
+        List<LoanApplication> allActiveLoans = loanRepository.findByApplicant(applicant)
                 .stream()
-                .filter(loan -> loan.getCreatedAt() != null
-                        && !loan.getCreatedAt().isBefore(start)
-                        && loan.getCreatedAt().isBefore(end))
                 .filter(loan -> loan.getStatus() != LoanStatus.REJECTED)
                 .filter(loan -> excludedLoanId == null || !excludedLoanId.equals(loan.getId()))
                 .toList();
 
-        BigDecimal annualApplied = currentYearLoans.stream()
-                .map(loan -> money(loan.getAmount()))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        List<LoanApplication> currentYearLoans = allActiveLoans.stream()
+                .filter(loan -> loan.getCreatedAt() != null
+                        && !loan.getCreatedAt().isBefore(start)
+                        && loan.getCreatedAt().isBefore(end))
+                .toList();
 
+        BigDecimal annualApplied = sumPrincipal(currentYearLoans);
+        BigDecimal totalApplied = sumPrincipal(allActiveLoans);
+
+        Set<Long> allActiveLoanIds = allActiveLoans.stream()
+                .map(LoanApplication::getId)
+                .collect(Collectors.toSet());
         Set<Long> currentYearLoanIds = currentYearLoans.stream()
                 .map(LoanApplication::getId)
                 .collect(Collectors.toSet());
 
-        BigDecimal recovered = repaymentRepository
-                .findByLoanApplication_Applicant_Id(applicant.getId())
-                .stream()
-                .filter(repayment -> currentYearLoanIds.contains(
-                        repayment.getLoanApplication().getId()))
-                .map(repayment -> money(repayment.getAmount()))
+        List<com.powsali.loan_module.entity.LoanRepayment> allRepayments =
+                repaymentRepository.findByLoanApplication_Applicant_Id(applicant.getId())
+                        .stream()
+                        .filter(repayment -> allActiveLoanIds.contains(
+                                repayment.getLoanApplication().getId()))
+                        .toList();
+
+        BigDecimal totalRecovered = allRepayments.stream()
+                .map(item -> money(item.getAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Repayment is principal-only. It cannot exceed original principal because
-        // LoanRepaymentService validates the cumulative amount on every entry.
-        if (recovered.compareTo(annualApplied) > 0) {
-            recovered = annualApplied;
+        BigDecimal annualRecovered = allRepayments.stream()
+                .filter(item -> currentYearLoanIds.contains(
+                        item.getLoanApplication().getId()))
+                .map(item -> money(item.getAmount()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        if (totalRecovered.compareTo(totalApplied) > 0) {
+            totalRecovered = totalApplied;
+        }
+        if (annualRecovered.compareTo(annualApplied) > 0) {
+            annualRecovered = annualApplied;
         }
 
-        BigDecimal outstanding = annualApplied.subtract(recovered).max(BigDecimal.ZERO);
-        boolean recoveryThresholdMet = annualApplied.compareTo(BigDecimal.ZERO) == 0
-                || recovered.compareTo(annualApplied.multiply(RECOVERY_THRESHOLD)) >= 0;
+        BigDecimal outstanding = totalApplied.subtract(totalRecovered).max(BigDecimal.ZERO);
+        BigDecimal annualOutstanding = annualApplied.subtract(annualRecovered).max(BigDecimal.ZERO);
+        boolean recoveryThresholdMet = totalApplied.compareTo(BigDecimal.ZERO) == 0
+                || totalRecovered.compareTo(totalApplied.multiply(RECOVERY_THRESHOLD)) >= 0;
 
-        // Before 70% recovery, repayments do not replenish the annual entitlement.
-        // Once the threshold is met, the group's limit applies to outstanding principal.
-        BigDecimal consumedForLimit = recoveryThresholdMet ? outstanding : annualApplied;
-        BigDecimal available = groupLimit.subtract(consumedForLimit).max(BigDecimal.ZERO);
+        // Before 70% total principal recovery, repayments do not replenish entitlement.
+        // Once met, both the current-year ceiling and all-time outstanding exposure
+        // are checked so old loans continue to count after a financial-year change.
+        BigDecimal annualConsumed = recoveryThresholdMet ? annualOutstanding : annualApplied;
+        BigDecimal annualAvailable = groupLimit.subtract(annualConsumed).max(BigDecimal.ZERO);
+        BigDecimal exposureAvailable = groupLimit.subtract(outstanding).max(BigDecimal.ZERO);
+
+        // If lifetime borrowing has reached the group ceiling and the recovery
+        // threshold is not met, block new requests even after the FY rolls over.
+        BigDecimal available;
+        if (totalApplied.compareTo(groupLimit) >= 0 && !recoveryThresholdMet) {
+            available = BigDecimal.ZERO;
+        } else {
+            available = annualAvailable.min(exposureAvailable);
+        }
 
         return new EligibilitySnapshot(
                 financialYear,
                 groupLimit,
                 annualApplied,
-                recovered,
+                annualRecovered,
+                totalApplied,
+                totalRecovered,
                 outstanding,
                 available,
                 recoveryThresholdMet);
+    }
+
+    private BigDecimal sumPrincipal(List<LoanApplication> loans) {
+        return loans.stream()
+                .map(loan -> money(loan.getAmount()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private BigDecimal money(Double value) {
@@ -186,7 +222,9 @@ public class LoanEligibilityService {
             String financialYear,
             BigDecimal groupLimit,
             BigDecimal annualApplied,
-            BigDecimal principalRecovered,
+            BigDecimal annualPrincipalRecovered,
+            BigDecimal totalPrincipalApplied,
+            BigDecimal totalPrincipalRecovered,
             BigDecimal outstandingPrincipal,
             BigDecimal availableAmount,
             boolean recoveryThresholdMet) {
