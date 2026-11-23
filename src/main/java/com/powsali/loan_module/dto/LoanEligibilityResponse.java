@@ -3,7 +3,8 @@ package com.powsali.loan_module.dto;
 import java.math.BigDecimal;
 
 /**
- * Read-only eligibility snapshot for the current Indian financial year.
+ * Read-only eligibility snapshot. Annual usage is financial-year scoped;
+ * recovery and outstanding principal are lifetime values for non-rejected loans.
  */
 public record LoanEligibilityResponse(
         Long applicantId,
@@ -13,7 +14,9 @@ public record LoanEligibilityResponse(
         String financialYear,
         BigDecimal annualLimit,
         BigDecimal annualApplied,
-        BigDecimal principalRecovered,
+        BigDecimal annualPrincipalRecovered,
+        BigDecimal totalPrincipalApplied,
+        BigDecimal totalPrincipalRecovered,
         BigDecimal outstandingPrincipal,
         BigDecimal availableAmount,
         BigDecimal minimumApplicationAmount,
