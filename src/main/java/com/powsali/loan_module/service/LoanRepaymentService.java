@@ -1,5 +1,6 @@
 package com.powsali.loan_module.service;
 
+import com.powsali.loan_module.dto.LoanRecoveryHistoryResponse;
 import com.powsali.loan_module.entity.LoanApplication;
 import com.powsali.loan_module.entity.LoanRepayment;
 import com.powsali.loan_module.entity.User;
@@ -87,5 +88,50 @@ public class LoanRepaymentService {
             throw new IllegalArgumentException("Loan not found");
         }
         return repaymentRepository.findByLoanApplication_IdOrderByReceivedAtAsc(loanId);
+    }
+
+    /**
+     * Employees see recovery entries for their own loans.
+     * DDO, HOO and ADMIN users see the department-wide recovery register.
+     */
+    @Transactional(readOnly = true)
+    public List<LoanRecoveryHistoryResponse> getRecoveryHistory(Long viewerId) {
+        User viewer = userRepository.findById(viewerId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        List<LoanRepayment> records;
+        if (viewer.getRole() == Role.EMPLOYEE) {
+            records = repaymentRepository
+                    .findByLoanApplication_Applicant_IdOrderByReceivedAtDesc(viewerId);
+        } else if (REPAYMENT_RECORDING_ROLES.contains(viewer.getRole())) {
+            records = repaymentRepository.findAllByOrderByReceivedAtDesc();
+        } else {
+            throw new IllegalStateException(
+                    "Recovery history is available to employees, DDO, HOO and ADMIN users");
+        }
+
+        return records.stream()
+                .map(this::toHistoryResponse)
+                .toList();
+    }
+
+    private LoanRecoveryHistoryResponse toHistoryResponse(LoanRepayment repayment) {
+        LoanApplication loan = repayment.getLoanApplication();
+        User applicant = loan.getApplicant();
+        User recorder = repayment.getRecordedBy();
+
+        return new LoanRecoveryHistoryResponse(
+                repayment.getId(),
+                loan.getId(),
+                applicant.getId(),
+                applicant.getName(),
+                applicant.getRole().name(),
+                applicant.getServiceGroup(),
+                loan.getAmount(),
+                repayment.getAmount(),
+                repayment.getRemarks(),
+                repayment.getReceivedAt(),
+                recorder == null ? null : recorder.getId(),
+                recorder == null ? null : recorder.getName());
     }
 }
