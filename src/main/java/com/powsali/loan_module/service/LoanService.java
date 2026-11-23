@@ -29,6 +29,7 @@ public class LoanService {
     private final UserRepository userRepository;
     private final ApprovalWorkflowRepository workflowRepository;
     private final LoanEligibilityService eligibilityService;
+    private final NotificationService notificationService;
 
     @Transactional
     public LoanApplication applyLoan(Long applicantId, Long appliedById, Double amount, String purpose) {
@@ -86,7 +87,9 @@ public class LoanService {
                 .currentOwner(firstStep.getApproverRole().name())
                 .build();
 
-        return loanRepository.save(loan);
+        LoanApplication saved = loanRepository.save(loan);
+        notificationService.loanSubmitted(saved, false);
+        return saved;
     }
 
     public List<LoanApplication> getLoansByApplicant(Long applicantId) {
