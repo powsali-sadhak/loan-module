@@ -61,15 +61,18 @@ public class LoanService {
         ApprovalWorkflow workflow = workflowRepository.findFirstByActiveTrueOrderByIdAsc()
                 .orElseThrow(() -> new IllegalStateException("No active approval workflow is configured"));
 
-        ApprovalStep firstStep = workflow.getSteps().stream()
+        List<ApprovalStep> orderedSteps = workflow.getSteps().stream()
                 .sorted(Comparator.comparing(ApprovalStep::getStepOrder))
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("The active workflow has no approval steps"));
+                .toList();
 
-        if (firstStep.getApproverRole() != Role.DDO) {
+        if (orderedSteps.size() != 2
+                || orderedSteps.get(0).getApproverRole() != Role.DDO
+                || orderedSteps.get(1).getApproverRole() != Role.HOO) {
             throw new IllegalStateException(
-                    "The first approval step must be DDO so officer applicants can be reviewed by another DDO");
+                    "The active loan workflow must contain exactly two steps: DDO review followed by HOO final approval");
         }
+
+        ApprovalStep firstStep = orderedSteps.get(0);
 
         LoanApplication loan = LoanApplication.builder()
                 .applicant(applicant)
