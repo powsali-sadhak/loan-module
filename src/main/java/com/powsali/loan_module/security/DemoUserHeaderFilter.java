@@ -29,8 +29,9 @@ public class DemoUserHeaderFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return "GET".equalsIgnoreCase(request.getMethod())
-                && "/api/demo/users".equals(request.getServletPath())
+        return "OPTIONS".equalsIgnoreCase(request.getMethod())
+                || ("GET".equalsIgnoreCase(request.getMethod())
+                && "/api/demo/users".equals(request.getServletPath()))
                 || "/api/auth/login".equals(request.getServletPath());
     }
 
