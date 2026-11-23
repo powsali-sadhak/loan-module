@@ -32,7 +32,7 @@ public class LoanService {
 
     @Transactional
     public LoanApplication applyLoan(Long applicantId, Long appliedById, Double amount, String purpose) {
-        User applicant = userRepository.findById(applicantId)
+        User applicant = userRepository.findByIdForUpdate(applicantId)
                 .orElseThrow(() -> new IllegalArgumentException("Applicant not found"));
         User appliedBy = userRepository.findById(appliedById)
                 .orElseThrow(() -> new IllegalArgumentException("Applicant/submitter not found"));
