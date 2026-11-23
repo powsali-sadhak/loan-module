@@ -300,7 +300,7 @@ export function ApplyLoan({user,demoMode}) {
     setBusy(true)
     setError('')
     try{
-      const body={applicantId:user.id,amount:Number(form.amount),purpose:form.purpose,...(demoMode?{appliedById:user.id}:{})}
+      const body={applicantId:user.id,amount:Number(form.amount),purpose:form.purpose}
       const r=await api.post('/api/loans/apply',body)
       setDone(r.data)
     }catch(e){setError(friendlyError(e))}
@@ -528,7 +528,7 @@ export function Approvals({user}) {
   async function act(actionType){
     setBusy(true);setError('');setSuccess('')
     try{
-      await api.post('/api/loans/action',{loanId:Number(id),userId:user.id,actionType,remarks})
+      await api.post('/api/loans/action',{loanId:Number(id),actionType,remarks})
       const message=`Action ${titleCase(actionType).toLowerCase()} successfully.`
       await find()
       setSuccess(message)
@@ -542,7 +542,6 @@ export function Approvals({user}) {
     setBusy(true);setError('');setSuccess('')
     try{
       await api.post(`/api/loans/${id}/repayments`,{
-        recordedById:user.id,
         amount:Number(repaymentAmount),
         remarks:repaymentRemarks
       })
@@ -630,8 +629,8 @@ export function RecoveryHistory({user}) {
     setError('')
     try{
       const [recoveryResponse,scheduleResponse,loanResponse]=await Promise.all([
-        api.get('/api/loans/recoveries',{params:{viewerId:user.id}}),
-        api.get('/api/loans/recovery-schedules',{params:{viewerId:user.id}}),
+        api.get('/api/loans/recoveries'),
+        api.get('/api/loans/recovery-schedules'),
         api.get('/api/loans/user/'+user.id)
       ])
       setRecords(Array.isArray(recoveryResponse.data)?recoveryResponse.data:[])
@@ -680,7 +679,6 @@ export function RecoveryHistory({user}) {
     setSuccess('')
     try{
       await api.post('/api/loans/'+loan.loanId+'/recovery-schedule',{
-        applicantId:user.id,
         monthlyAmount
       })
       setSuccess('Monthly recovery schedule created for LN-'+String(loan.loanId).padStart(5,'0')+'.')
