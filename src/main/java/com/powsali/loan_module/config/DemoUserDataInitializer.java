@@ -62,7 +62,10 @@ public class DemoUserDataInitializer implements CommandLineRunner {
             new DemoAccount("ddo3", "Suman Das", "ddo3@test.com", Role.DDO, "B"),
 
             new DemoAccount("hoo1", "Anirban Roy", "hoo1@test.com", Role.HOO, "A"),
-            new DemoAccount("hoo2", "Sharmila Mukherjee", "hoo2@test.com", Role.HOO, "A")
+            new DemoAccount("hoo2", "Sharmila Mukherjee", "hoo2@test.com", Role.HOO, "A"),
+
+            new DemoAccount("support1", "Priya Sharma", "support1@test.com", Role.SUPPORT, null),
+            new DemoAccount("support2", "Rahul Sen", "support2@test.com", Role.SUPPORT, null)
         );
     }
 
