@@ -39,6 +39,7 @@ public class User {
     @Column(name = "mobile_number", length = 20)
     private String mobileNumber;
 
+    @Builder.Default
     @Column(name = "whatsapp_notifications_enabled", nullable = false, columnDefinition = "boolean default false")
     private boolean whatsappNotificationsEnabled = false;
 }
