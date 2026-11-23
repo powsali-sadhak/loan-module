@@ -6,7 +6,6 @@ import lombok.Data;
 public class LoanRequestDTO {
 
     private Long applicantId;
-    private Long appliedById;
     private Double amount;
     private String purpose;
 
