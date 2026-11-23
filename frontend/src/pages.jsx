@@ -126,6 +126,7 @@ function ActivityIcon(){return <Clock3 size={18} className="muted-icon"/>}
 export function Approvals({user}) {
   const [id,setId]=useState(''),[loan,setLoan]=useState(null),[actions,setActions]=useState([]),[remarks,setRemarks]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[success,setSuccess]=useState('')
   const [repayments,setRepayments]=useState([]),[repaymentAmount,setRepaymentAmount]=useState(''),[repaymentRemarks,setRepaymentRemarks]=useState('')
+  const [eligibilitySnapshot,setEligibilitySnapshot]=useState(null)
 
   async function find(e){
     e?.preventDefault()
@@ -138,13 +139,17 @@ export function Approvals({user}) {
       ])
       setLoan(l.data)
       setActions(a.data||[])
+      try{
+        const eligibilityResponse=await api.get(`/api/loans/eligibility/${l.data.applicantId}`)
+        setEligibilitySnapshot(eligibilityResponse.data)
+      }catch{setEligibilitySnapshot(null)}
       if(l.data.status==='APPROVED'){
         const repaymentResponse=await api.get(`/api/loans/${id}/repayments`)
         setRepayments(repaymentResponse.data||[])
       }else{
         setRepayments([])
       }
-    }catch(e){setError(friendlyError(e));setLoan(null);setRepayments([])}
+    }catch(e){setError(friendlyError(e));setLoan(null);setRepayments([]);setEligibilitySnapshot(null)}
     finally{setBusy(false)}
   }
 
@@ -208,12 +213,14 @@ export function Approvals({user}) {
         </section>
       </div>
       {loan.status==='APPROVED'&&<section className="panel table-panel" style={{marginTop:18}}>
-        <div className="panel-heading"><div><h3>Principal recovery</h3><p>Record repayments against this approved loan</p></div><Status value={recoveryPercent>=70?'70% RECOVERED':'RECOVERY IN PROGRESS'}/></div>
+        <div className="panel-heading"><div><h3>Principal recovery</h3><p>Record repayments against this approved loan</p></div><Status value={eligibilitySnapshot?.recoveryThresholdMet?'70% FY RECOVERY MET':'70% FY RECOVERY PENDING'}/></div>
         <div className="detail-kv">
           <div><small>Original principal</small><b>{money(loan.amount)}</b></div>
-          <div><small>Recovered so far</small><b>{money(totalRecovered)}</b></div>
-          <div><small>Outstanding principal</small><b>{money(Math.max(0,Number(loan.amount)-totalRecovered))}</b></div>
-          <div><small>Recovered percentage</small><b>{recoveryPercent.toFixed(1)}%</b></div>
+          <div><small>Recovered on this loan</small><b>{money(totalRecovered)}</b></div>
+          <div><small>Outstanding on this loan</small><b>{money(Math.max(0,Number(loan.amount)-totalRecovered))}</b></div>
+          <div><small>This loan recovered</small><b>{recoveryPercent.toFixed(1)}%</b></div>
+          <div><small>Current FY principal used</small><b>{money(eligibilitySnapshot?.annualApplied)}</b></div>
+          <div><small>Current FY principal recovered</small><b>{money(eligibilitySnapshot?.principalRecovered)}</b></div>
         </div>
         <form className="ticket-form" onSubmit={recordRepayment}>
           <div className="form-grid">
@@ -223,7 +230,7 @@ export function Approvals({user}) {
           <div className="form-actions"><button className="btn btn-primary" disabled={busy||!repaymentAmount||Number(repaymentAmount)<=0||loan.applicantId===user.id}><Check size={15}/> Record repayment</button></div>
         </form>
         {repayments.length>0&&<div className="ticket-list">{repayments.map(item=><div className="ticket-row" key={item.repaymentId}><div className="ticket-symbol"><Wallet size={18}/></div><div className="ticket-main"><b>{money(item.amount)}</b><small>{dateTime(item.receivedAt)} · Recorded by {item.recordedBy||'Officer'}</small></div></div>)}</div>}
-        <div className="form-note"><ShieldCheck size={17}/><span>After 70% of the current financial year's principal usage is recovered, recovered principal restores the available group entitlement. Only DDO, HOO or ADMIN users other than the borrower can record repayments.</span></div>
+        <div className="form-note"><ShieldCheck size={17}/><span>The 70% re-application test is measured against the applicant's aggregate principal usage for the current financial year, not just this individual loan. Only DDO, HOO or ADMIN users other than the borrower can record repayments.</span></div>
       </section>}
     </>}
   </>
