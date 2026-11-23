@@ -34,7 +34,7 @@ public class LoanRepaymentService {
             Double amount,
             String remarks) {
 
-        LoanApplication loan = loanRepository.findById(loanId)
+        LoanApplication loan = loanRepository.findByIdForUpdate(loanId)
                 .orElseThrow(() -> new IllegalArgumentException("Loan not found"));
 
         User recorder = userRepository.findById(recordedById)
