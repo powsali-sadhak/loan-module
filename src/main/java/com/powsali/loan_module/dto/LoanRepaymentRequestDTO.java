@@ -4,7 +4,6 @@ import lombok.Data;
 
 @Data
 public class LoanRepaymentRequestDTO {
-    private Long recordedById;
     private Double amount;
     private String remarks;
 }
