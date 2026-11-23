@@ -7,6 +7,12 @@ const api = axios.create({
 })
 
 api.interceptors.request.use(config => {
+  // Let the browser set the multipart boundary for file uploads; the client
+  // otherwise defaults to application/json for ordinary API requests.
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+    config.headers.delete('Content-Type')
+  }
+
   const token = localStorage.getItem('loan_jwt')
   if (token) config.headers.Authorization = `Bearer ${token}`
 
