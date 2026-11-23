@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   Activity, ArrowDownRight, ArrowRight, ArrowUpRight, BadgeCheck, CalendarDays, Check, CheckCircle2,
   ChevronRight, CircleAlert, Clock3, FilePlus2, FileText, Filter, Landmark, LifeBuoy,
-  LoaderCircle, MessageSquare, Plus, RefreshCw, Search, Send, ShieldCheck, SlidersHorizontal,
+  Inbox, LoaderCircle, MessageSquare, Plus, RefreshCw, Search, Send, ShieldCheck, SlidersHorizontal, UserRound,
   Sparkles, Wallet, X
 } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -361,6 +361,252 @@ export function Support({user}) {
   async function create(e){e.preventDefault();try{const body={...form,loanId:form.loanId?Number(form.loanId):null};await api.post('/api/support/tickets',body);setShowForm(false);setForm({category:'OTHER',subject:'',description:'',priority:'MEDIUM',loanId:''});load()}catch(e){setError(friendlyError(e))}}
   const staff=['SUPPORT','ADMIN'].includes(user.role)
   return <><PageHeader eyebrow="HELP & SUPPORT" title="Support centre" subtitle="Get help with your loan applications, account or portal access." action={<button className="btn btn-primary" onClick={()=>setShowForm(!showForm)}><Plus size={16}/> Raise a ticket</button>}/>{error&&<Alert>{error}</Alert>}{showForm&&<form className="panel ticket-form" onSubmit={create}><div className="panel-heading"><div><h3>New support request</h3><p>Our team will get back to you through this ticket.</p></div><button type="button" className="icon-btn" onClick={()=>setShowForm(false)}><X size={17}/></button></div><div className="form-grid"><label className="field"><span>Category</span><select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>{['LOGIN_ACCESS','EMPLOYEE_DETAILS','LOAN_SUBMISSION','ELIGIBILITY','DOCUMENT_UPLOAD','APPLICATION_STATUS','OTHER'].map(x=><option key={x} value={x}>{titleCase(x)}</option>)}</select></label><label className="field"><span>Priority</span><select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})}>{['LOW','MEDIUM','HIGH','URGENT'].map(x=><option key={x}>{x}</option>)}</select></label><label className="field full"><span>Subject</span><input required value={form.subject} onChange={e=>setForm({...form,subject:e.target.value})} placeholder="What do you need help with?"/></label><label className="field"><span>Loan ID (optional)</span><input type="number" value={form.loanId} onChange={e=>setForm({...form,loanId:e.target.value})} placeholder="e.g. 12"/></label><label className="field full"><span>Description</span><textarea required rows="3" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Describe the issue in a little more detail…"/></label></div><div className="form-actions"><button className="btn btn-primary"><Send size={15}/> Submit ticket</button></div></form>}<section className="panel table-panel"><div className="panel-heading"><div><h3>{staff?'Your tickets':'My support tickets'}</h3><p>Track the status of each service request</p></div><button className="btn btn-quiet btn-sm" onClick={load}><RefreshCw size={15}/> Refresh</button></div>{loading?<Spinner/>:tickets.length?<div className="ticket-list">{tickets.map(t=><div className="ticket-row" key={t.ticketId}><div className="ticket-symbol"><MessageSquare size={18}/></div><div className="ticket-main"><b>{t.subject}</b><small>{t.ticketNumber||`Ticket #${t.ticketId}`} · {titleCase(t.category)} · {dateTime(t.createdAt)}</small></div><Status value={t.status}/><span className="priority">{titleCase(t.priority)}</span></div>)}</div>:<Empty title="No support tickets" copy="Need a hand? Raise a ticket and our support team will take it from there."/>}</section></>
+}
+
+
+export function SupportDesk({user}) {
+  const [tickets,setTickets]=useState([])
+  const [supportUsers,setSupportUsers]=useState([])
+  const [selected,setSelected]=useState(null)
+  const [loading,setLoading]=useState(true)
+  const [busy,setBusy]=useState(false)
+  const [error,setError]=useState('')
+  const [success,setSuccess]=useState('')
+  const [query,setQuery]=useState('')
+  const [statusFilter,setStatusFilter]=useState('ALL')
+  const [assigneeId,setAssigneeId]=useState('')
+  const [comment,setComment]=useState('')
+  const [internalNote,setInternalNote]=useState(false)
+  const [resolution,setResolution]=useState('')
+
+  const isAdmin=user.role==='ADMIN'
+
+  async function loadQueue(){
+    setLoading(true)
+    setError('')
+    try{
+      const response=await api.get('/api/support/tickets/queue')
+      const rows=Array.isArray(response.data)?response.data:[]
+      setTickets(rows)
+      if(selected?.id&&!rows.some(ticket=>ticket.id===selected.id)){
+        setSelected(null)
+      }
+    }catch(e){
+      setError(friendlyError(e))
+      setTickets([])
+    }finally{
+      setLoading(false)
+    }
+  }
+
+  async function loadSupportUsers(){
+    if(!isAdmin)return
+    try{
+      const response=await api.get('/api/demo/users')
+      setSupportUsers((Array.isArray(response.data)?response.data:[]).filter(item=>item.role==='SUPPORT'))
+    }catch(e){
+      setError(friendlyError(e))
+    }
+  }
+
+  async function openTicket(ticketId){
+    setError('')
+    setSuccess('')
+    try{
+      const response=await api.get(`/api/support/tickets/${ticketId}`)
+      setSelected(response.data)
+      setAssigneeId(response.data.assigneeId?String(response.data.assigneeId):'')
+      setResolution(response.data.resolution||'')
+    }catch(e){
+      setError(friendlyError(e))
+    }
+  }
+
+  useEffect(()=>{
+    loadQueue()
+    loadSupportUsers()
+  },[user.id,user.role])
+
+  async function refresh(){
+    await loadQueue()
+    if(selected?.id)await openTicket(selected.id)
+  }
+
+  async function assignTicket(e){
+    e.preventDefault()
+    if(!selected||!assigneeId)return
+    setBusy(true);setError('');setSuccess('')
+    try{
+      await api.patch(`/api/support/tickets/${selected.id}/assign`,{assigneeId:Number(assigneeId)})
+      setSuccess('Ticket assigned successfully.')
+      await loadQueue()
+      await openTicket(selected.id)
+    }catch(e){setError(friendlyError(e))}
+    finally{setBusy(false)}
+  }
+
+  async function changeStatus(nextStatus){
+    if(!selected)return
+    if(nextStatus==='RESOLVED'&&!resolution.trim()){
+      setError('Enter a resolution summary before resolving this ticket.')
+      return
+    }
+    setBusy(true);setError('');setSuccess('')
+    try{
+      await api.patch(`/api/support/tickets/${selected.id}/status`,{
+        status:nextStatus,
+        resolution:nextStatus==='RESOLVED'?resolution:null
+      })
+      setSuccess(`Ticket moved to ${titleCase(nextStatus)}.`)
+      await loadQueue()
+      await openTicket(selected.id)
+    }catch(e){setError(friendlyError(e))}
+    finally{setBusy(false)}
+  }
+
+  async function addComment(e){
+    e.preventDefault()
+    if(!selected||!comment.trim())return
+    setBusy(true);setError('');setSuccess('')
+    try{
+      await api.post(`/api/support/tickets/${selected.id}/comments`,{
+        body:comment.trim(),
+        internalNote
+      })
+      setComment('')
+      setInternalNote(false)
+      await openTicket(selected.id)
+      setSuccess(internalNote?'Internal note added.':'Reply added.')
+    }catch(e){setError(friendlyError(e))}
+    finally{setBusy(false)}
+  }
+
+  const openCount=tickets.filter(t=>t.status==='OPEN').length
+  const assignedCount=tickets.filter(t=>t.status==='ASSIGNED').length
+  const activeCount=tickets.filter(t=>t.status==='IN_PROGRESS').length
+  const resolvedCount=tickets.filter(t=>['RESOLVED','CLOSED'].includes(t.status)).length
+  const filtered=tickets.filter(t=>{
+    const matchesStatus=statusFilter==='ALL'||t.status===statusFilter
+    const haystack=[t.ticketNumber,t.subject,t.requesterName,t.category,t.priority,t.status,t.assigneeName].join(' ').toLowerCase()
+    return matchesStatus&&haystack.includes(query.toLowerCase())
+  })
+
+  return <>
+    <PageHeader
+      eyebrow="SERVICE OPERATIONS"
+      title="Support staff desk"
+      subtitle={isAdmin
+        ?"Review the full ticket queue and assign each request to a support officer."
+        :"Work your assigned tickets, pick up unassigned requests and record resolutions."}
+      action={<button className="btn btn-quiet" onClick={refresh} disabled={loading||busy}><RefreshCw size={15}/> Refresh queue</button>}
+    />
+    {error&&<Alert>{error}/>}
+    {success&&<Alert type="success">{success}</Alert>}
+    <div className="stats-grid">
+      <Stat label={isAdmin?'All tickets':'Visible queue'} value={loading?'—':tickets.length} detail="Tickets in this queue" icon={Inbox}/>
+      <Stat label="Unassigned / open" value={loading?'—':openCount} detail="Awaiting an owner" icon={Clock3} tone="amber"/>
+      <Stat label="Assigned" value={loading?'—':assignedCount+activeCount} detail="Assigned or being handled" icon={UserRound} tone="blue"/>
+      <Stat label="Resolved / closed" value={loading?'—':resolvedCount} detail="Completed requests" icon={CheckCircle2} tone="green"/>
+    </div>
+    <div className="detail-grid">
+      <section className="panel table-panel">
+        <div className="panel-heading">
+          <div><h3>{isAdmin?'All support tickets':'Your work queue'}</h3><p>{isAdmin?'All incoming requests across LoanDesk':'Unassigned tickets and tickets assigned to you'}</p></div>
+          <span className="soft-tag">{filtered.length} tickets</span>
+        </div>
+        <div className="filter-bar" style={{padding:'0 0 14px',flexWrap:'wrap'}}>
+          <div className="search-field" style={{maxWidth:'none',flexBasis:'100%'}}><Search size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search ticket, subject, requester or assignee…"/></div>
+          <select className="select-control" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
+            {['ALL','OPEN','ASSIGNED','IN_PROGRESS','RESOLVED','CLOSED'].map(value=><option key={value} value={value}>{value==='ALL'?'All statuses':titleCase(value)}</option>)}
+          </select>
+        </div>
+        {loading?<Spinner/>:filtered.length===0
+          ?<Empty title={tickets.length?'No matching tickets':'No tickets in this queue'} copy={tickets.length?'Change your search or status filter.':'New support requests will appear here when submitted.'}/>
+          :<div className="ticket-list" style={{padding:0}}>
+            {filtered.map(ticket=><button
+              type="button"
+              key={ticket.id}
+              onClick={()=>openTicket(ticket.id)}
+              className="ticket-row"
+              style={{
+                width:'100%',textAlign:'left',background:selected?.id===ticket.id?'#f5f7ff':'transparent',
+                border:0,borderTop:'1px solid #eff1f5',cursor:'pointer',padding:'13px 8px',borderRadius:7
+              }}
+            >
+              <div className="ticket-symbol"><MessageSquare size={17}/></div>
+              <div className="ticket-main">
+                <b>{ticket.subject}</b>
+                <small>{ticket.ticketNumber} · {ticket.requesterName} · {titleCase(ticket.priority)}</small>
+                <small>{ticket.assigneeName? `Assigned to ${ticket.assigneeName}`:'Unassigned'} · {dateTime(ticket.createdAt)}</small>
+              </div>
+              <Status value={ticket.status}/>
+              <ChevronRight size={16}/>
+            </button>)}
+          </div>
+        }
+      </section>
+
+      <section className="panel detail-main">
+        {!selected
+          ?<Empty title="Select a ticket" copy="Choose a request from the queue to review its details and take action."/>
+          :<>
+            <div className="panel-heading">
+              <div><div className="eyebrow">{selected.ticketNumber}</div><h3>{selected.subject}</h3><p>{titleCase(selected.category)} · Submitted {dateTime(selected.createdAt)}</p></div>
+              <Status value={selected.status}/>
+            </div>
+            <div className="detail-kv">
+              <div><small>Requester</small><b>{selected.requesterName}</b></div>
+              <div><small>Priority</small><b>{titleCase(selected.priority)}</b></div>
+              <div><small>Linked loan</small><b>{selected.loanId? `LN-${String(selected.loanId).padStart(5,'0')}`:'Not linked'}</b></div>
+              <div><small>Assigned to</small><b>{selected.assigneeName||'Unassigned'}</b></div>
+            </div>
+            <div className="detail-purpose"><small>REQUEST DESCRIPTION</small><p style={{whiteSpace:'pre-wrap'}}>{selected.description}</p></div>
+
+            {isAdmin&&selected.status!=='CLOSED'&&<form onSubmit={assignTicket} className="steps-editor">
+              <div className="steps-heading"><span>ASSIGN SUPPORT OFFICER</span></div>
+              <div style={{display:'flex',gap:8,alignItems:'end',flexWrap:'wrap'}}>
+                <label className="field" style={{flex:1,margin:0}}><span>Support officer</span>
+                  <select required value={assigneeId} onChange={e=>setAssigneeId(e.target.value)}>
+                    <option value="">Choose an officer</option>
+                    {supportUsers.map(person=><option key={person.id} value={person.id}>{person.name} ({person.username})</option>)}
+                  </select>
+                </label>
+                <button className="btn btn-primary" disabled={busy||!assigneeId}>Assign ticket</button>
+              </div>
+            </form>}
+
+            {(user.role==='SUPPORT'||isAdmin)&&selected.status!=='CLOSED'&&<div className="steps-editor">
+              <div className="steps-heading"><span>WORKFLOW ACTIONS</span></div>
+              {['OPEN','ASSIGNED'].includes(selected.status)&&<button className="btn btn-primary" disabled={busy} onClick={()=>changeStatus('IN_PROGRESS')}>Start working <ArrowRight size={15}/></button>}
+              {selected.status==='IN_PROGRESS'&&<>
+                <label className="field"><span>Resolution summary</span><textarea rows="3" value={resolution} onChange={e=>setResolution(e.target.value)} placeholder="Explain how the issue was resolved…"/></label>
+                <button className="btn btn-primary" disabled={busy||!resolution.trim()} onClick={()=>changeStatus('RESOLVED')}>Mark resolved <CheckCircle2 size={15}/></button>
+              </>}
+              {selected.status==='RESOLVED'&&<button className="btn btn-quiet" disabled={busy} onClick={()=>changeStatus('CLOSED')}>Close ticket <Check size={15}/></button>}
+            </div>}
+
+            <div className="steps-editor">
+              <div className="steps-heading"><span>CONVERSATION & NOTES</span></div>
+              {selected.comments?.length
+                ?<div className="timeline">{selected.comments.map(item=><div className="timeline-item" key={item.id}>
+                  <div className="timeline-dot"><MessageSquare size={12}/></div>
+                  <div><b>{item.authorName} {item.internalNote&&<span className="soft-tag">Internal note</span>}</b><small>{dateTime(item.createdAt)}</small><p style={{whiteSpace:'pre-wrap'}}>{item.body}</p></div>
+                </div>)}</div>
+                :<p style={{fontSize:10,color:'#98a1af'}}>No comments have been added yet.</p>
+              }
+              <form onSubmit={addComment} className="ticket-form" style={{padding:'10px 0 0'}}>
+                <label className="field"><span>Add a reply or note</span><textarea required rows="3" value={comment} onChange={e=>setComment(e.target.value)} placeholder="Write an update for the requester…"/></label>
+                <label style={{display:'flex',alignItems:'center',gap:8,fontSize:10,color:'#66748a',marginBottom:12}}>
+                  <input type="checkbox" checked={internalNote} onChange={e=>setInternalNote(e.target.checked)}/> Internal note (visible only to support staff)
+                </label>
+                <div className="form-actions" style={{padding:0}}><button className="btn btn-primary" disabled={busy||!comment.trim()}><Send size={14}/> Add comment</button></div>
+              </form>
+            </div>
+          </>
+        }
+      </section>
+    </div>
+  </>
 }
 
 export function AdminWorkflows({user}) {
