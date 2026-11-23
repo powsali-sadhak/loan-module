@@ -4,7 +4,7 @@ import {
   Activity, ArrowDownRight, ArrowRight, ArrowUpRight, BadgeCheck, CalendarDays, Check, CheckCircle2,
   ChevronRight, CircleAlert, Clock3, FilePlus2, FileText, Filter, Landmark, LifeBuoy,
   Inbox, LoaderCircle, MessageSquare, Plus, RefreshCw, Search, Send, ShieldCheck, SlidersHorizontal, UserRound,
-  ChevronRight, Sparkles, Wallet, X
+  Sparkles, Wallet, X
 } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import api, { friendlyError } from './api'
@@ -20,14 +20,14 @@ function Empty({title,copy,cta}) { return <div className="empty-state"><div clas
 function Stat({label,value,detail,icon:Icon,tone='blue'}) { return <div className="stat-card"><div className={`stat-icon ${tone}`}><Icon size={19}/></div><div className="stat-label">{label}</div><div className="stat-value">{value}</div><div className="stat-detail">{detail}</div></div> }
 
 function parseLoanAmount(message) {
-  const lakh = message.match(/(?:₹\\s*)?(\\d+(?:\\.\\d+)?)\\s*(?:lakh|lakhs|lac|lacs)\\b/i)
+  const lakh = message.match(/(?:₹\s*)?(\d+(?:\.\d+)?)\s*(?:lakh|lakhs|lac|lacs)\b/i)
   if (lakh) return Math.round(Number(lakh[1]) * 100000)
 
-  const thousand = message.match(/(?:₹\\s*)?(\\d+(?:\\.\\d+)?)\\s*(?:thousand|k)\\b/i)
+  const thousand = message.match(/(?:₹\s*)?(\d+(?:\.\d+)?)\s*(?:thousand|k)\b/i)
   if (thousand) return Math.round(Number(thousand[1]) * 1000)
 
-  const rupees = message.match(/(?:₹|rs\\.?\\s*)(\\d[\\d,]*)/i)
-    || message.match(/\\b(\\d[\\d,]{4,})\\b/)
+  const rupees = message.match(/(?:₹|rs\.?\s*)(\d[\d,]*)/i)
+    || message.match(/\b(\d[\d,]{4,})\b/)
   if (rupees) return Number(rupees[1].replaceAll(',', ''))
   return null
 }
