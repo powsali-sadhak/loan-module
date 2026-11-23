@@ -170,13 +170,14 @@ public class LoanActionService {
                 .sorted(Comparator.comparing(ApprovalStep::getStepOrder))
                 .toList();
 
-        ApprovalStep firstStep = steps.stream()
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("The assigned workflow has no approval steps"));
-
-        if (firstStep.getApproverRole() != Role.DDO) {
-            throw new IllegalStateException("The first approval step must be DDO");
+        if (steps.size() != 2
+                || steps.get(0).getApproverRole() != Role.DDO
+                || steps.get(1).getApproverRole() != Role.HOO) {
+            throw new IllegalStateException(
+                    "The assigned workflow must contain exactly two steps: DDO review followed by HOO final approval");
         }
+
+        ApprovalStep firstStep = steps.get(0);
 
         loan.setAmount(amount);
         loan.setPurpose(purpose.trim());
