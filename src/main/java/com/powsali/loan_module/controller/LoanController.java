@@ -2,6 +2,7 @@ package com.powsali.loan_module.controller;
 
 import com.powsali.loan_module.dto.LoanActionDTO;
 import com.powsali.loan_module.dto.LoanRepaymentRequestDTO;
+import com.powsali.loan_module.dto.LoanRecoveryScheduleRequestDTO;
 import com.powsali.loan_module.dto.LoanRequestDTO;
 import com.powsali.loan_module.dto.LoanResubmissionDTO;
 import com.powsali.loan_module.entity.LoanAction;
@@ -106,6 +107,21 @@ public class LoanController {
                 .toList();
 
         return ResponseEntity.ok(repayments);
+    }
+
+    // Create a zero-interest monthly schedule selected by the borrower.
+    @PostMapping("/{loanId}/recovery-schedule")
+    public ResponseEntity<?> createRecoverySchedule(
+            @PathVariable Long loanId,
+            @RequestBody LoanRecoveryScheduleRequestDTO request) {
+        return ResponseEntity.ok(repaymentService.createRecoverySchedule(
+                loanId, request.getApplicantId(), request.getMonthlyAmount()));
+    }
+
+    // Employee-scoped or department-wide scheduled instalments, based on viewer role.
+    @GetMapping("/recovery-schedules")
+    public ResponseEntity<?> getRecoverySchedule(@RequestParam Long viewerId) {
+        return ResponseEntity.ok(repaymentService.getRecoverySchedule(viewerId));
     }
 
     // Employee-scoped or department-wide recovery register, based on viewer role.
