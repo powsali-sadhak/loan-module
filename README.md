@@ -1,170 +1,214 @@
-# Employee Loan Management API
+# LoanDesk
 
-A role-based employee loan application backend built with Java 17, Spring Boot 3.5, Spring Data JPA, Spring Security, JWT and MySQL.
+**LoanDesk is a portfolio project demonstrating a role-based employee loan workflow** built with Java, Spring Boot, Spring Security, React and MySQL. It covers the application lifecycle from eligibility checks and multi-step review to repayment tracking, supporting documents, service tickets and notifications.
 
-## Current capabilities
+> This is an independent learning and portfolio project. It is not an official government, employer or financial-institution product. All demo identities and records are synthetic. Do not use it to process real financial or personal data.
 
-- Employee and DDO loan application submission
-- Configurable, ordered approval workflows managed by an administrator
-- Role-checked forward, approve, reject and revision actions
-- Loan action history
-- JWT-authenticated API access
-- Authenticated user identity is taken from the JWT principal for application and approval actions
+[![Maven tests](https://github.com/powsali-sadhak/loan-module/actions/workflows/maven.yml/badge.svg?branch=main)](https://github.com/powsali-sadhak/loan-module/actions/workflows/maven.yml)
+[![Application build](https://github.com/powsali-sadhak/loan-module/actions/workflows/loandesk-build.yml/badge.svg?branch=main)](https://github.com/powsali-sadhak/loan-module/actions/workflows/loandesk-build.yml)
 
-## Roles
+## Project highlights
 
-- `EMPLOYEE`: submits and views their own loan applications
-- `DDO`, `HOO`: can act when their role is the current configured approval step
-- `ADMIN`: manages approval workflow definitions
+- **Loan eligibility:** service-group limits, financial-year calculations and a configurable 70% principal-recovery eligibility rule.
+- **Approval workflow:** DDO review followed by HOO final approval, with forwarding, approval, rejection and revision requests.
+- **Repayment management:** principal-only repayment records, borrower-selected monthly schedules and oldest-due-first allocation.
+- **Document management:** private server-side storage, metadata, SHA-256 checksums, access checks and PDF/JPEG/PNG validation.
+- **Support management:** employee tickets, staff assignment, status transitions, public comments and internal notes.
+- **Notifications:** persistent in-app inbox with unread counts and event-based routing; optional experimental WhatsApp adapter for local testing.
+- **Role-aware React UI:** employee workspace, approval desk, recovery history, support centre and workflow administration.
 
-## Configurable approval workflow
+## Technology stack
 
-An administrator creates a workflow with one or more ordered approval steps. Each step has a role and display label. Only one workflow can be active at a time. New loan applications are attached to the active workflow and start at its first step.
+| Layer | Technology |
+|---|---|
+| Backend | Java 17, Spring Boot 3.5, Spring Web, Spring Data JPA |
+| Security | Spring Security, JWT, BCrypt |
+| Database | MySQL 8+ |
+| Frontend | React 18, Vite 6, React Router, Axios |
+| UI and charts | Lucide React, Recharts |
+| Build and CI | Maven, npm, GitHub Actions |
+| Optional messaging prototype | Self-hosted Evolution API (Baileys / WhatsApp Web) |
 
-Example workflow configuration:
+## Roles and workflow
 
-```json
-{
-  "name": "Standard Employee Loan",
-  "description": "Standard multi-level loan approval",
-  "active": true,
-  "steps": [
-    { "stepOrder": 1, "approverRole": "DDO", "label": "DDO Verification" },
-    { "stepOrder": 2, "approverRole": "HOO", "label": "HOO Approval" }
-  ]
-}
+| Role | Main responsibilities |
+|---|---|
+| `EMPLOYEE` | Apply for loans, review personal applications, attach documents, select a recovery schedule and raise support tickets |
+| `DDO` | Apply for a loan and review applications assigned to the DDO step |
+| `HOO` | Apply for a loan and take final approval action when assigned |
+| `SUPPORT` | Work the support queue, respond to tickets and manage ticket status within permissions |
+| `ADMIN` | Configure approval workflows, assign support tickets and access administrative operations |
+
+The current loan application policy requires **DDO review followed by HOO final approval**. An applicant cannot approve their own loan; officer applicants must be reviewed by another eligible officer.
+
+## Demonstration eligibility rules
+
+The project includes a sample policy to demonstrate financial eligibility logic:
+
+| Service group | Annual entitlement ceiling |
+|---|---:|
+| A / B | ₹10,00,000 |
+| C | ₹7,00,000 |
+| D | ₹5,00,000 |
+
+Each application has a ₹1,00,000 minimum. The financial year runs from 1 April to 31 March using the Asia/Kolkata time zone. A 70% aggregate principal-recovery test is applied before previously used entitlement can replenish. These are project demonstration rules, not a statement of any institution's current policy.
+
+The detailed calculations and examples are in [docs/loan-eligibility-and-recovery.md](docs/loan-eligibility-and-recovery.md).
+
+## Architecture
+
+```text
+React + Vite
+    |
+    | REST / JSON, multipart document uploads
+    v
+Spring Boot REST API
+    |
+    +-- Spring Security / JWT and role checks
+    +-- Loan eligibility and approval workflow
+    +-- Repayment and recovery scheduling
+    +-- Support tickets and notifications
+    +-- Document metadata ------------------+
+    |                                        |
+    v                                        v
+MySQL database                    Private server-side file storage
+                                             |
+                                  Optional Evolution API adapter
 ```
 
-### Workflow administration endpoints
+## Run locally
 
-All workflow administration endpoints require an authenticated user with the `ADMIN` role.
+### Prerequisites
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/admin/workflows` | List configured workflows |
-| `POST` | `/api/admin/workflows` | Create a workflow |
-| `PUT` | `/api/admin/workflows/{workflowId}` | Update a workflow |
-| `POST` | `/api/admin/workflows/{workflowId}/activate` | Activate a workflow |
+- JDK 17
+- MySQL 8.0 or later
+- Node.js 20 or later and npm
+- Git
 
-Approval step order must be sequential starting at 1. `EMPLOYEE` and `ADMIN` are not valid approver roles.
+### 1. Clone the repository
 
-## Loan endpoints
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/api/loans/apply` | Submit a loan application |
-| `POST` | `/api/loans/action` | Forward, approve, reject or request revision |
-| `GET` | `/api/loans/{loanId}` | View an application |
-| `GET` | `/api/loans/user/{userId}` | View applications for an employee |
-| `GET` | `/api/loans/{loanId}/actions` | View movement/action history |
-
-### Submit a loan
-
-`POST /api/loans/apply`
-
-```json
-{
-  "applicantId": 42,
-  "amount": 50000,
-  "purpose": "Home renovation"
-}
+```powershell
+git clone https://github.com/powsali-sadhak/loan-module.git
+cd loan-module
 ```
 
-The authenticated JWT identity supplies `appliedBy`; clients must not send an actor ID.
+### 2. Create a local database and user
 
-### Take an approval action
+Run these statements in MySQL, choosing a password of your own:
 
-`POST /api/loans/action`
-
-```json
-{
-  "loanId": 1001,
-  "actionType": "FORWARDED",
-  "remarks": "Verified the supporting documents"
-}
+```sql
+CREATE DATABASE loan_module;
+CREATE USER 'loan_app'@'localhost' IDENTIFIED BY 'CHOOSE_A_LOCAL_PASSWORD';
+GRANT ALL PRIVILEGES ON loan_module.* TO 'loan_app'@'localhost';
+FLUSH PRIVILEGES;
 ```
 
-Supported action types: `FORWARDED`, `APPROVED`, `REJECTED`, `REVISION_REQUESTED`.
+Do not reuse a password from another project or commit it to the repository.
 
-The authenticated user's role must match the current workflow step. `FORWARDED` moves the application to the next step. `APPROVED` is only permitted at the final step. Rejected and approved applications are terminal.
+### 3. Configure and start the backend
 
+Set the required environment variables in the same PowerShell session or in your IDE run configuration. Generate a fresh local JWT signing secret:
 
-## Issue and support ticket management
+```powershell
+$env:DB_URL = "jdbc:mysql://localhost:3306/loan_module"
+$env:DB_USERNAME = "loan_app"
+$env:DB_PASSWORD = "YOUR_LOCAL_MYSQL_PASSWORD"
 
-Authenticated users can raise tickets for login/access, employee details, loan submission, eligibility, document upload, application status or other issues. A ticket can optionally reference a loan application owned by or submitted by the requester.
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$secretBytes = New-Object byte[] 48
+$rng.GetBytes($secretBytes)
+$env:JWT_SECRET = [Convert]::ToBase64String($secretBytes)
+$rng.Dispose()
 
-### Ticket endpoints
-
-| Method | Endpoint | Access | Description |
-|---|---|---|---|
-| `POST` | `/api/support/tickets` | Authenticated | Create a ticket |
-| `GET` | `/api/support/tickets/my` | Authenticated | List your tickets |
-| `GET` | `/api/support/tickets/{ticketId}` | Requester, assigned support, admin; support can view unassigned queue tickets | View ticket and visible comments |
-| `GET` | `/api/support/tickets/queue` | SUPPORT, ADMIN | View unassigned and assigned queue |
-| `POST` | `/api/support/tickets/{ticketId}/comments` | Ticket participants | Add a public comment or staff-only internal note |
-| `PATCH` | `/api/support/tickets/{ticketId}/assign` | ADMIN | Assign to a SUPPORT user |
-| `PATCH` | `/api/support/tickets/{ticketId}/status` | Support staff; requester may close a resolved ticket | Update ticket status |
-
-Create ticket example:
-
-```json
-{
-  "loanId": 1001,
-  "category": "DOCUMENT_UPLOAD",
-  "subject": "Unable to upload supporting document",
-  "description": "The portal returns an error when I upload the PDF.",
-  "priority": "HIGH"
-}
+$env:CORS_ALLOWED_ORIGINS = "http://localhost:5173"
+$env:LOAN_DOCUMENT_STORAGE = "./uploads/loan-documents"
+$env:WHATSAPP_ENABLED = "false"
 ```
 
-Ticket numbers are generated by the server in the format `TKT-YYYY-XXXXXXXX`. Supported priorities are `LOW`, `MEDIUM`, `HIGH` and `URGENT`. Initial status is `OPEN`.
+Start the backend from the repository root:
 
-Supported status flow:
-
-- `OPEN` -> `ASSIGNED` or `IN_PROGRESS`
-- `ASSIGNED` -> `IN_PROGRESS` or `OPEN`
-- `IN_PROGRESS` -> `RESOLVED` (requires a resolution summary)
-- `RESOLVED` -> `IN_PROGRESS` (reopen) or `CLOSED`
-- The requester can close a resolved ticket.
-
-The `SUPPORT` role is separate from loan approval roles. Only administrators assign tickets to users with the `SUPPORT` role. Internal notes are filtered out of employee-facing ticket responses. File attachments and notifications are intentionally not included until secure object storage and delivery mechanisms are configured.
-
-## Database and configuration
-
-The application currently uses Hibernate schema update for local development. Configure database credentials through environment variables before deployment; never commit real credentials.
-
-Recommended environment configuration:
-
-```properties
-spring.datasource.url=${DB_URL:jdbc:mysql://localhost:3306/loan_module}
-spring.datasource.username=${DB_USERNAME:root}
-spring.datasource.password=${DB_PASSWORD:}
-spring.jpa.hibernate.ddl-auto=update
-spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect
+```powershell
+.\mvnw.cmd spring-boot:run
 ```
 
-## Authentication and security profiles
+The default profile is `local-demo`. It seeds synthetic demo accounts and enables the demo identity switcher. A locally configured `DEMO_PASSWORD` can be supplied when password-based demo login is needed; otherwise the seeder generates a random password that is not printed or committed.
 
-- When no profile is specified, the application uses the `local-demo` profile for local development.
-- In `local-demo`, the user switcher sends `X-Demo-User-Id`. This is a development-only identity mechanism, not real authentication. Demo accounts and demo-user endpoints are disabled in production.
-- Any non-demo profile uses JWT bearer authentication. Only `POST /api/auth/login` and CORS preflight requests are public; other API requests require a valid token.
-- Method-level role checks are enabled. Loan actor identities are taken from the authenticated principal rather than request-supplied actor IDs, and employee loan reads are restricted to their own records.
-- Start production with `SPRING_PROFILES_ACTIVE=prod`, provide a strong `JWT_SECRET` of at least 32 bytes, and configure `CORS_ALLOWED_ORIGINS`. The production profile intentionally has no source-controlled JWT secret fallback.
-- CSRF is disabled because the API uses stateless bearer authentication. Serve the application over HTTPS in deployed environments.
+### 4. Start the frontend
 
-## Supporting loan documents
+Open a second terminal:
 
-See [docs/loan-documents.md](docs/loan-documents.md) for document upload endpoints, file validation, access rules and private storage configuration.
+```powershell
+cd frontend
+Copy-Item .env.example .env
+npm install
+npm run dev
+```
 
-## Optional WhatsApp notifications (personal project)
+Open [http://localhost:5173](http://localhost:5173). The frontend API URL can be changed through `VITE_API_BASE_URL` in `frontend/.env`.
 
-See [docs/whatsapp-notifications.md](docs/whatsapp-notifications.md) for the self-hosted Evolution API setup, local demo opt-in settings, environment variables and limitations.
+### Demo-mode security warning
 
-## Important next steps before production
+The `local-demo` profile uses the `X-Demo-User-Id` header to switch between synthetic demo identities. This is a local development convenience, **not real authentication**. Do not expose the local-demo profile to the internet or use it for real users or real data.
 
-- Move all secrets to environment variables / a secret manager and rotate any credentials previously committed.
-- Add database migrations (Flyway or Liquibase) instead of relying on `ddl-auto=update`.
-- Add integration tests for workflow configuration, role authorization and every transition.
-- Add a revision resubmission path and immutable workflow versioning for already-submitted applications.
-- Add issue/ticket management, attachment storage, notifications, monitoring and deployment configuration.
-- Run the Maven test suite and security review before production deployment.
+For a non-demo deployment, set `SPRING_PROFILES_ACTIVE=prod`, provide a strong `JWT_SECRET` and `CORS_ALLOWED_ORIGINS`, and provision real user accounts securely. The production profile does not use the demo identity header or seed demo accounts.
+
+## Supporting documents
+
+The application supports up to 10 PDF, JPG, JPEG or PNG files per loan, with a default 10 MB per-file limit. The backend validates file signatures, stores generated filenames outside the public frontend directory and saves metadata plus SHA-256 checksums in MySQL.
+
+See [docs/loan-documents.md](docs/loan-documents.md) for access rules, configuration and backup considerations. Back up both the database and the private file-storage directory.
+
+## Notifications and WhatsApp prototype
+
+The in-app notification inbox is the primary notification channel. The optional WhatsApp adapter can call a self-hosted Evolution API instance when enabled.
+
+The Evolution API integration uses an unofficial WhatsApp Web/Baileys connection. It is provided only as an experimental personal-project integration, can stop working or risk account restrictions, and must not be used for unsolicited or production financial messages. It is disabled by default. See [docs/whatsapp-notifications.md](docs/whatsapp-notifications.md).
+
+## Tests and builds
+
+Run backend tests:
+
+```powershell
+.\mvnw.cmd test
+```
+
+Build the backend:
+
+```powershell
+.\mvnw.cmd -DskipTests package
+```
+
+Build the frontend:
+
+```powershell
+cd frontend
+npm install
+npm run build
+```
+
+GitHub Actions runs the Maven test suite and the Spring Boot / React build workflows.
+
+## Repository layout
+
+```text
+src/main/java/          Spring Boot controllers, services, entities and security
+src/main/resources/     Environment-driven application configuration
+src/test/java/          Backend and security tests
+frontend/src/           React application and UI
+docs/                   Eligibility, recovery, document and notification notes
+.github/workflows/      CI workflows
+```
+
+## Known limitations
+
+- This is a portfolio prototype, not a production financial system.
+- Local-demo identity switching is not suitable for internet-facing deployment.
+- Production user provisioning, password reset, MFA, operational monitoring and deployment hardening are not supplied as a complete package.
+- Document files use local/private filesystem storage. Multi-instance deployments need shared durable private storage or an object-storage adapter.
+- Production deployments should add malware scanning, encrypted backups, retention controls, database migrations and a formal security review.
+- The WhatsApp adapter is experimental and has not been represented as a guaranteed delivery channel.
+- No open-source license has been selected for this repository yet.
+
+## Contact
+
+For project questions or collaboration, use the GitHub repository's Issues or Discussions features.
