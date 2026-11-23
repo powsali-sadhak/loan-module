@@ -11,20 +11,20 @@ import {
   Dashboard, ApplyLoan, MyLoans, LoanDetails, Approvals, RecoveryHistory, Support, SupportDesk, AdminWorkflows, Login
 } from './pages'
 
+const SUPPORT_ONLY_ROLES = ['SUPPORT', 'ADMIN']
+const LOAN_USER_ROLES = ['EMPLOYEE', 'DDO', 'HOO']
+
 const nav = [
   { label: 'Workspace', items: [
-    { to: '/', label: 'Overview', icon: LayoutDashboard },
-    { to: '/apply', label: 'Apply for a loan', icon: FilePlus2 },
-    { to: '/loans', label: 'My applications', icon: FileText }
+    { to: '/', label: 'Overview', icon: LayoutDashboard, roles: LOAN_USER_ROLES },
+    { to: '/apply', label: 'Apply for a loan', icon: FilePlus2, roles: LOAN_USER_ROLES },
+    { to: '/loans', label: 'My applications', icon: FileText, roles: LOAN_USER_ROLES }
   ]},
   { label: 'Operations', items: [
-    { to: '/approvals', label: 'Approval desk', icon: ClipboardCheck, roles: ['DDO','HOO','ADMIN'] },
-    { to: '/recoveries', label: 'Recovery history', icon: History, roles: ['EMPLOYEE','DDO','HOO','ADMIN'] },
+    { to: '/approvals', label: 'Approval desk', icon: ClipboardCheck, roles: ['DDO','HOO'] },
+    { to: '/recoveries', label: 'Recovery history', icon: History, roles: LOAN_USER_ROLES },
     { to: '/support', label: 'Support centre', icon: Headphones },
-    { to: '/support/desk', label: 'Support staff desk', icon: ClipboardCheck, roles: ['SUPPORT','ADMIN'] }
-  ]},
-  { label: 'Administration', items: [
-    { to: '/admin/workflows', label: 'Approval workflows', icon: Workflow, roles: ['ADMIN'] }
+    { to: '/support/desk', label: 'Support staff desk', icon: ClipboardCheck, roles: SUPPORT_ONLY_ROLES }
   ]}
 ]
 
@@ -57,11 +57,20 @@ export default function App() {
     return () => { mounted = false }
   }, [])
 
-  const visibleNav = nav.map(group => ({ ...group, items: group.items.filter(item => !item.roles || item.roles.includes(user.role)) })).filter(group => group.items.length)
+  const supportOnly = SUPPORT_ONLY_ROLES.includes(user.role)
+  const visibleNav = nav
+    .map(group => ({
+      ...group,
+      items: group.items.filter(item => !item.roles || item.roles.includes(user.role))
+    }))
+    .filter(group => group.items.length)
 
   function changeUser(id) {
     const next = demoUsers.find(x => x.id === Number(id))
-    if (next) { setUser(next); navigate('/') }
+    if (next) {
+      setUser(next)
+      navigate(SUPPORT_ONLY_ROLES.includes(next.role) ? '/support/desk' : '/')
+    }
   }
   function logout() { setToken(null); navigate('/login') }
 
@@ -81,15 +90,15 @@ export default function App() {
       </div></header>
       <div className="page-wrap"><Routes>
         <Route path="/login" element={<Login onLogin={token=>{setToken(token);navigate('/')}}/>}/>
-        <Route path="/" element={<Dashboard user={user}/>}/>
-        <Route path="/apply" element={<ApplyLoan user={user} demoMode={demoMode}/>}/>
-        <Route path="/loans" element={<MyLoans user={user}/>}/>
-        <Route path="/loans/:loanId" element={<LoanDetails user={user}/>}/>
-        <Route path="/approvals" element={<Approvals user={user}/>}/>
-        <Route path="/recoveries" element={<RecoveryHistory user={user}/>}/>
+        <Route path="/" element={supportOnly ? <Navigate to="/support/desk" replace/> : <Dashboard user={user}/>}/>
+        <Route path="/apply" element={supportOnly ? <Navigate to="/support/desk" replace/> : <ApplyLoan user={user} demoMode={demoMode}/>}/>
+        <Route path="/loans" element={supportOnly ? <Navigate to="/support/desk" replace/> : <MyLoans user={user}/>}/>
+        <Route path="/loans/:loanId" element={supportOnly ? <Navigate to="/support/desk" replace/> : <LoanDetails user={user}/>}/>
+        <Route path="/approvals" element={supportOnly ? <Navigate to="/support/desk" replace/> : <Approvals user={user}/>}/>
+        <Route path="/recoveries" element={supportOnly ? <Navigate to="/support/desk" replace/> : <RecoveryHistory user={user}/>}/>
         <Route path="/support" element={<Support user={user}/>}/>
-        <Route path="/support/desk" element={<SupportDesk user={user}/>}/>
-        <Route path="/admin/workflows" element={<AdminWorkflows user={user}/>}/>
+        <Route path="/support/desk" element={SUPPORT_ONLY_ROLES.includes(user.role) ? <SupportDesk user={user}/> : <Navigate to="/support" replace/>}/>
+        <Route path="/admin/workflows" element={<Navigate to={supportOnly ? "/support/desk" : "/"} replace/>}/>
         <Route path="*" element={<Navigate to="/" replace/>}/>
       </Routes></div>
       <footer className="page-footer"><span>© {new Date().getFullYear()} LoanDesk</span><span>Built for transparent public service</span><span><ShieldCheck size={13}/> Secure workspace</span></footer>
