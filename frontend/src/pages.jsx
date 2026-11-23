@@ -500,7 +500,7 @@ export function SupportDesk({user}) {
         :"Work your assigned tickets, pick up unassigned requests and record resolutions."}
       action={<button className="btn btn-quiet" onClick={refresh} disabled={loading||busy}><RefreshCw size={15}/> Refresh queue</button>}
     />
-    {error&&<Alert>{error}/>}
+    {error&&<Alert>{error}</Alert>}
     {success&&<Alert type="success">{success}</Alert>}
     <div className="stats-grid">
       <Stat label={isAdmin?'All tickets':'Visible queue'} value={loading?'—':tickets.length} detail="Tickets in this queue" icon={Inbox}/>
