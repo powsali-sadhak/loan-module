@@ -46,12 +46,12 @@ function suggestTicket(message) {
   } else if (/eligib|limit|group [abcd]|loan amount|recovery|70 percent|70%/.test(text)) {
     category = 'ELIGIBILITY'
     subject = 'Loan eligibility clarification'
-  } else if (/apply|application|submit loan|loan submission|form/.test(text)) {
-    category = 'LOAN_SUBMISSION'
-    subject = 'Loan application assistance'
-  } else if (/status|track|pending|approved|rejected|forwarded/.test(text)) {
+  } else if (/status|track|pending|approved|rejected|forwarded|stuck|waiting|not moving/.test(text)) {
     category = 'APPLICATION_STATUS'
     subject = 'Loan application status enquiry'
+  } else if (/apply|submit loan|loan submission|form|application submit/.test(text)) {
+    category = 'LOAN_SUBMISSION'
+    subject = 'Loan application assistance'
   } else if (/employee detail|name change|email|profile|employee record/.test(text)) {
     category = 'EMPLOYEE_DETAILS'
     subject = 'Employee details correction'
@@ -97,6 +97,18 @@ function LoanDeskAssistant({mode,user,eligibility,onApply}) {
     }
 
     if (amount !== null) {
+      if (!eligibility) {
+        const groupCheck = amount > annualLimit
+          ? `${money(amount)} is above the Group ${group} ceiling of ${money(annualLimit)}.`
+          : amount < 100000
+            ? `${money(amount)} is below the minimum application amount of ₹1,00,000.`
+            : `${money(amount)} is within the Group ${group} ceiling of ${money(annualLimit)}.`
+        return {
+          text:groupCheck + ' I cannot confirm your currently available entitlement until your live eligibility information has loaded. Please check the eligibility panel and ask me again.',
+          suggestion:null
+        }
+      }
+
       const suggestion = amount >= 100000 && amount <= maximum
         ? {amount:String(amount)}
         : null
