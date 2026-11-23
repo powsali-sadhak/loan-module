@@ -44,3 +44,6 @@ build/
 .env
 application.properties
 
+
+# User-uploaded loan documents must never be committed
+/uploads/
