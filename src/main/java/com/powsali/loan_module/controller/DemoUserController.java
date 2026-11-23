@@ -23,7 +23,7 @@ public class DemoUserController {
     public List<DemoUserResponse> getDemoUsers() {
         return userRepository.findAll().stream()
                 .filter(user -> user.getUsername() != null
-                        && user.getUsername().matches("(employee|ddo|hoo)\\d+"))
+                        && user.getUsername().matches("(employee|ddo|hoo|support)\\d+"))
                 .sorted(Comparator
                         .comparingInt((User user) -> roleOrder(user.getUsername()))
                         .thenComparingInt(user -> accountNumber(user.getUsername())))
@@ -40,7 +40,8 @@ public class DemoUserController {
     private int roleOrder(String username) {
         if (username.startsWith("employee")) return 1;
         if (username.startsWith("ddo")) return 2;
-        return 3;
+        if (username.startsWith("hoo")) return 3;
+        return 4;
     }
 
     private int accountNumber(String username) {
