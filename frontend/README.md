@@ -1,24 +1,41 @@
 # LoanDesk frontend
 
-React + Vite UI for the Spring Boot employee loan management API.
+React 18 + Vite frontend for the LoanDesk Spring Boot API.
 
-## Run locally
-1. Start the Spring Boot API on http://localhost:8080.
-2. Copy `.env.example` to `.env` and adjust the API URL.
-3. Run `npm install`, then `npm run dev`.
-4. Open http://localhost:5173.
+## Local development
 
-## Demo mode
-The local demo identity selector is enabled by default. It sends actor IDs in request bodies for loan actions and application submissions, matching the local test-only backend variant. This is NOT authentication. Do not expose demo mode to a public network.
+1. Start the backend and MySQL database using the root [README](../README.md).
+2. Copy `.env.example` to `.env`.
+3. Set `VITE_API_BASE_URL` if the backend is not running at `http://localhost:8080`.
+4. Run:
 
-When using the committed JWT backend, set `VITE_DEMO_MODE=false` and use the login screen. Ticket and workflow endpoints rely on authenticated principals and role checks.
+```powershell
+npm install
+npm run dev
+```
 
-## Screens
-- Overview dashboard
-- Apply for a loan and view personal loans
-- Approval queue with forward / approve / reject / request revision
-- Loan details and action timeline
-- Support ticket creation, tracking and staff queue
-- Admin workflow designer (ordered role-based steps)
+Open [http://localhost:5173](http://localhost:5173).
 
-The current backend does not expose a general-purpose list-all-loans endpoint. The approval screen therefore uses a small set of loan IDs entered by staff or records opened from the dashboard, rather than pretending there is an endpoint that does not exist.
+## Demo mode and identity handling
+
+The root application defaults to `local-demo` and the frontend demo switcher uses the backend's development-only `X-Demo-User-Id` identity header. This is not authentication and must only be used for local portfolio exploration. Do not expose the local-demo profile to a public network.
+
+For non-demo deployments, set `SPRING_PROFILES_ACTIVE=prod`, use a strong environment-managed `JWT_SECRET`, provision real users securely and configure the frontend to use the authenticated login flow. Never place database credentials, JWT signing keys or messaging API keys in `VITE_*` variables.
+
+## Main screens
+
+- Role-aware overview dashboard
+- Loan application and eligibility view
+- Personal application history and detail timeline
+- DDO / HOO approval desk
+- Repayment and recovery history
+- Supporting document upload, preview and download
+- Employee support centre and staff ticket desk
+- Admin approval-workflow designer
+- In-app notification inbox and optional local WhatsApp settings
+
+## Build
+
+```powershell
+npm run build
+```
