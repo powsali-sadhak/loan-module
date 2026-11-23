@@ -2,15 +2,9 @@
 
 ## Local demo accounts
 
-The non-production demo initializer seeds these support operators:
+The local-only demo initializer seeds synthetic support identities `support1` and `support2`, plus an administrator account. Use the in-app demo identity switcher to explore the local workflow.
 
-| Username | Name | Role | Password |
-|---|---|---|---|
-| support1 | Priya Sharma | SUPPORT | `Demo@12345` |
-| support2 | Rahul Sen | SUPPORT | `Demo@12345` |
-| admin | System Administrator | ADMIN | `Demo@12345` |
-
-These credentials are for the local demo only. Do not use them in a deployed environment.
+No shared demo password is committed. Set `DEMO_PASSWORD` locally if password-based demo login is needed; otherwise the initializer generates a random password that is not displayed.
 
 ## Staff dashboard
 
@@ -35,4 +29,4 @@ Open **Operations → Support staff desk** (route `/support/desk`).
 
 ## Local-demo security
 
-The current demo uses the selected user ID header to resolve the acting database user because JWT enforcement is intentionally disabled in the local branch. This is not authentication. Before deployment, restore JWT-backed authorization and derive the actor from the authenticated principal. Keep demo accounts and the demo-user directory disabled in production.
+The `local-demo` profile uses the development-only `X-Demo-User-Id` header to resolve the selected synthetic demo identity. This header is not authentication and must never be exposed as a production access mechanism. Non-demo profiles require JWT bearer authentication, and support actions use the authenticated principal. Demo account seeding and demo-user endpoints are disabled in production.
