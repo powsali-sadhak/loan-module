@@ -6,8 +6,6 @@ import lombok.Data;
 @Data
 public class LoanResubmissionDTO {
 
-    private Long employeeId;
-
     private Double amount;
 
     private String purpose;
