@@ -90,7 +90,7 @@ export function ApplyLoan({user,demoMode}) {
         {eligibilityError&&<Alert>{eligibilityError}</Alert>}
         {eligibilityLoading?<Spinner/>:eligibility&&<div className="form-note"><ShieldCheck size={17}/><span>
           Group {eligibility.serviceGroup} · Financial year {eligibility.financialYear}. Annual group limit: {money(eligibility.annualLimit)}.
-          Applied this FY: {money(eligibility.annualApplied)} · Recovered this FY: {money(eligibility.annualPrincipalRecovered)} · Total outstanding: {money(eligibility.outstandingPrincipal)} · Available now: <b>{money(eligibility.availableAmount)}</b>.
+          Applied this FY: {money(eligibility.annualApplied)} · Recovered this FY: {money(eligibility.annualPrincipalRecovered)} · Total recovered: {money(eligibility.totalPrincipalRecovered)} · Outstanding: {money(eligibility.outstandingPrincipal)} · Available now: <b>{money(eligibility.availableAmount)}</b>.
           {eligibility.recoveryThresholdMet?' Recovery threshold is met.':' At least 70% principal recovery is required before used entitlement can be replenished.'}
         </span></div>}
         {!eligibilityLoading&&eligibility&&maximumApplicationAmount<100000&&<Alert>{eligibility.message}</Alert>}
