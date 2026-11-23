@@ -409,7 +409,7 @@ function LoanDocuments({loan,user}) {
     try {
       const body = new FormData()
       body.append('document', selectedFile)
-      await api.post(`/api/loans/${loan.loanId}/documents`, body, { headers: { 'Content-Type': undefined } })
+      await api.post(`/api/loans/${loan.loanId}/documents`, body)
       setSelectedFile(null)
       const picker = formElement.querySelector('input[type="file"]')
       if (picker) picker.value = ''
