@@ -32,6 +32,7 @@ jobs:
       DB_URL: jdbc:mysql://127.0.0.1:3306/loan_module
       DB_USERNAME: root
       DB_PASSWORD: root
+      JWT_SECRET: ci-only-jwt-signing-key-not-for-production-123456789
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
