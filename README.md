@@ -143,6 +143,10 @@ spring.jpa.hibernate.ddl-auto=update
 spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect
 ```
 
+## Optional WhatsApp notifications (personal project)
+
+See [docs/whatsapp-notifications.md](docs/whatsapp-notifications.md) for the self-hosted Evolution API setup, local demo opt-in settings, environment variables and limitations.
+
 ## Important next steps before production
 
 - Move all secrets to environment variables / a secret manager and rotate any credentials previously committed.
