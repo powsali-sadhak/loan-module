@@ -72,6 +72,9 @@ public class LoanRepaymentService {
         }
 
         BigDecimal repaymentAmount = BigDecimal.valueOf(amount).setScale(2, RoundingMode.HALF_UP);
+        if (repaymentAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Repayment amount must be at least ₹0.01");
+        }
         BigDecimal principal = BigDecimal.valueOf(loan.getAmount()).setScale(2, RoundingMode.HALF_UP);
         BigDecimal alreadyRecovered = repaymentRepository
                 .findByLoanApplication_IdOrderByReceivedAtAsc(loanId)
@@ -143,6 +146,9 @@ public class LoanRepaymentService {
                 .setScale(2, RoundingMode.HALF_UP);
         BigDecimal outstanding = principal.subtract(alreadyRecovered).setScale(2, RoundingMode.HALF_UP);
         BigDecimal selectedMonthlyAmount = monthlyAmount.setScale(2, RoundingMode.HALF_UP);
+        if (selectedMonthlyAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Monthly recovery amount must be at least ₹0.01");
+        }
 
         if (outstanding.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalStateException("This loan has no outstanding principal to schedule");
