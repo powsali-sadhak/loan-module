@@ -15,7 +15,7 @@ import java.util.UUID;
 
 /**
  * Creates an idempotent set of local-only demo accounts.
- * All demo accounts use the same documented test password.
+ * Demo passwords are configured locally or generated randomly at startup.
  */
 @Component
 @Profile("local-demo & !prod")
