@@ -23,6 +23,7 @@ public class SupportTicketService {
     private final TicketActivityRepository activities;
     private final UserRepository users;
     private final LoanRepository loans;
+    private final NotificationService notificationService;
 
     @Transactional
     public TicketResponseDTO create(User requester, TicketCreateRequestDTO req) {
@@ -62,6 +63,7 @@ public class SupportTicketService {
         SupportTicket saved = tickets.save(ticket);
         addActivity(saved, requester, "CREATED", null, TicketStatus.OPEN,
                 "Support ticket submitted");
+        notificationService.supportTicketCreated(saved);
         return response(saved, requester);
     }
 
@@ -123,6 +125,10 @@ public class SupportTicketService {
                 ? "Assigned to " + assignee.getName()
                 : "Reassigned from " + previousAssignee.getName() + " to " + assignee.getName();
         addActivity(saved, actor, event, oldStatus, saved.getStatus(), message);
+        notificationService.supportTicketUpdated(
+                saved, actor, "Support ticket assigned",
+                saved.getTicketNumber() + " has been assigned to " + assignee.getName() + ".",
+                "SUPPORT_TICKET_ASSIGNED");
         return response(saved, actor);
     }
 
@@ -191,6 +197,13 @@ public class SupportTicketService {
                 ? "Resolved: " + resolution.trim()
                 : "Ticket status changed to " + next.name().replace('_', ' ');
         addActivity(saved, actor, "STATUS_CHANGED", old, next, message);
+        notificationService.supportTicketUpdated(
+                saved, actor,
+                next == TicketStatus.RESOLVED ? "Support ticket resolved" : "Support ticket updated",
+                saved.getTicketNumber() + " status changed to " + next.name().replace('_', ' ') + "."
+                        + (next == TicketStatus.RESOLVED && saved.getResolution() != null
+                        ? " " + saved.getResolution() : ""),
+                "SUPPORT_TICKET_STATUS");
         return response(saved, actor);
     }
 
@@ -213,6 +226,13 @@ public class SupportTicketService {
         comment.setBody(req.getBody().trim());
         comment.setInternalNote(req.isInternalNote());
         comments.save(comment);
+
+        if (!req.isInternalNote()) {
+            notificationService.supportTicketUpdated(
+                    ticket, actor, "New support ticket reply",
+                    ticket.getTicketNumber() + " has a new reply from " + actor.getName() + ".",
+                    "SUPPORT_TICKET_REPLY");
+        }
 
         return response(ticket, actor);
     }
