@@ -90,7 +90,7 @@ export function ApplyLoan({user,demoMode}) {
         {eligibilityError&&<Alert>{eligibilityError}</Alert>}
         {eligibilityLoading?<Spinner/>:eligibility&&<div className="form-note"><ShieldCheck size={17}/><span>
           Group {eligibility.serviceGroup} · Financial year {eligibility.financialYear}. Annual group limit: {money(eligibility.annualLimit)}.
-          Applied: {money(eligibility.annualApplied)} · Principal recovered: {money(eligibility.principalRecovered)} · Available now: <b>{money(eligibility.availableAmount)}</b>.
+          Applied this FY: {money(eligibility.annualApplied)} · Recovered this FY: {money(eligibility.annualPrincipalRecovered)} · Total outstanding: {money(eligibility.outstandingPrincipal)} · Available now: <b>{money(eligibility.availableAmount)}</b>.
           {eligibility.recoveryThresholdMet?' Recovery threshold is met.':' At least 70% principal recovery is required before used entitlement can be replenished.'}
         </span></div>}
         {!eligibilityLoading&&eligibility&&maximumApplicationAmount<100000&&<Alert>{eligibility.message}</Alert>}
@@ -220,7 +220,8 @@ export function Approvals({user}) {
           <div><small>Outstanding on this loan</small><b>{money(Math.max(0,Number(loan.amount)-totalRecovered))}</b></div>
           <div><small>This loan recovered</small><b>{recoveryPercent.toFixed(1)}%</b></div>
           <div><small>Current FY principal used</small><b>{money(eligibilitySnapshot?.annualApplied)}</b></div>
-          <div><small>Current FY principal recovered</small><b>{money(eligibilitySnapshot?.principalRecovered)}</b></div>
+          <div><small>Total principal recovered</small><b>{money(eligibilitySnapshot?.totalPrincipalRecovered)}</b></div>
+          <div><small>Total outstanding across loans</small><b>{money(eligibilitySnapshot?.outstandingPrincipal)}</b></div>
         </div>
         <form className="ticket-form" onSubmit={recordRepayment}>
           <div className="form-grid">
