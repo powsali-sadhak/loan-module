@@ -2,13 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import {
   Activity, ArrowDownLeft, ArrowUpRight, Bell, BriefcaseBusiness, ChevronDown, CircleHelp,
-  ClipboardCheck, CreditCard, FilePlus2, FileText, Gauge, Headphones, LayoutDashboard,
+  ClipboardCheck, CreditCard, FilePlus2, FileText, Gauge, Headphones, History, LayoutDashboard,
   LogOut, Menu, Plus, Search, Settings2, ShieldCheck, Sparkles, Users, Workflow, X
 } from 'lucide-react'
 import api, { friendlyError, setToken } from './api'
 import { DEMO_USERS, money } from './data'
 import {
-  Dashboard, ApplyLoan, MyLoans, LoanDetails, Approvals, Support, AdminWorkflows, Login
+  Dashboard, ApplyLoan, MyLoans, LoanDetails, Approvals, RecoveryHistory, Support, AdminWorkflows, Login
 } from './pages'
 
 const nav = [
@@ -19,6 +19,7 @@ const nav = [
   ]},
   { label: 'Operations', items: [
     { to: '/approvals', label: 'Approval desk', icon: ClipboardCheck, roles: ['DDO','HOO','ADMIN'] },
+    { to: '/recoveries', label: 'Recovery history', icon: History, roles: ['EMPLOYEE','DDO','HOO','ADMIN'] },
     { to: '/support', label: 'Support centre', icon: Headphones }
   ]},
   { label: 'Administration', items: [
@@ -84,6 +85,7 @@ export default function App() {
         <Route path="/loans" element={<MyLoans user={user}/>}/>
         <Route path="/loans/:loanId" element={<LoanDetails user={user}/>}/>
         <Route path="/approvals" element={<Approvals user={user}/>}/>
+        <Route path="/recoveries" element={<RecoveryHistory user={user}/>}/>
         <Route path="/support" element={<Support user={user}/>}/>
         <Route path="/admin/workflows" element={<AdminWorkflows user={user}/>}/>
         <Route path="*" element={<Navigate to="/" replace/>}/>
