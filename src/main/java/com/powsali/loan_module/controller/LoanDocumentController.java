@@ -63,7 +63,7 @@ public class LoanDocumentController {
                 .contentType(MediaType.parseMediaType(stored.metadata().getContentType()))
                 .contentLength(stored.metadata().getFileSize())
                 .cacheControl(CacheControl.noStore())
-                .header(HttpHeaders.X_CONTENT_TYPE_OPTIONS, "nosniff")
+                .header("X-Content-Type-Options", "nosniff")
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
                         .filename(safeFilename, StandardCharsets.UTF_8).build().toString())
                 .body(resource);
