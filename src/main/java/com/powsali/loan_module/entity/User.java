@@ -35,4 +35,10 @@ public class User {
     // Service classification: HOO=A, DDO=B, employees=A/B/C/D.
     @Column(name = "service_group", length = 1)
     private String serviceGroup;
+
+    @Column(name = "mobile_number", length = 20)
+    private String mobileNumber;
+
+    @Column(name = "whatsapp_notifications_enabled", nullable = false, columnDefinition = "boolean default false")
+    private boolean whatsappNotificationsEnabled = false;
 }
