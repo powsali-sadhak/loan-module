@@ -6,7 +6,7 @@ import {
   LogOut, Menu, Plus, Search, Settings2, ShieldCheck, Sparkles, Users, Workflow, X
 } from 'lucide-react'
 import api, { friendlyError, setToken } from './api'
-import { DEMO_USERS, money } from './data'
+import { DEMO_USERS, dateTime } from './data'
 import {
   Dashboard, ApplyLoan, MyLoans, LoanDetails, Approvals, RecoveryHistory, Support, SupportDesk, AdminWorkflows, Login
 } from './pages'
@@ -34,6 +34,10 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem('loan_demo_user')) || DEMO_USERS[0] } catch { return DEMO_USERS[0] }
   })
   const [menuOpen, setMenuOpen] = useState(false)
+  const [notifications, setNotifications] = useState([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [notificationsLoading, setNotificationsLoading] = useState(false)
   const [demoMode, setDemoMode] = useState(import.meta.env.VITE_DEMO_MODE !== 'false')
   const location = useLocation()
   const navigate = useNavigate()
@@ -43,6 +47,64 @@ export default function App() {
   }, [location.pathname])
 
   useEffect(() => { localStorage.setItem('loan_demo_user', JSON.stringify(user)) }, [user])
+
+  async function loadNotifications(showSpinner = false) {
+    if (showSpinner) setNotificationsLoading(true)
+    try {
+      const [listResponse, countResponse] = await Promise.all([
+        api.get('/api/notifications'),
+        api.get('/api/notifications/unread-count')
+      ])
+      setNotifications(Array.isArray(listResponse.data) ? listResponse.data : [])
+      setUnreadCount(Number(countResponse.data?.count || 0))
+    } catch (error) {
+      console.warn('Could not load notifications:', error)
+    } finally {
+      if (showSpinner) setNotificationsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    setNotifications([])
+    setUnreadCount(0)
+    loadNotifications()
+    const refreshId = setInterval(() => loadNotifications(), 15000)
+    return () => clearInterval(refreshId)
+  }, [user.id])
+
+  async function openNotification(item) {
+    if (!item.read) {
+      try {
+        await api.patch('/api/notifications/' + item.id + '/read')
+        setNotifications(current => current.map(notification =>
+          notification.id === item.id ? { ...notification, read: true, readAt: new Date().toISOString() } : notification
+        ))
+        setUnreadCount(current => Math.max(0, current - 1))
+      } catch (error) {
+        console.warn('Could not mark notification as read:', error)
+      }
+    }
+    setNotificationsOpen(false)
+    if (item.referenceType === 'LOAN_APPLICATION' && item.referenceId) {
+      navigate('/loans/' + item.referenceId)
+    } else if (item.referenceType === 'SUPPORT_TICKET') {
+      navigate('/support')
+    }
+  }
+
+  async function markAllNotificationsRead() {
+    try {
+      await api.patch('/api/notifications/read-all')
+      setNotifications(current => current.map(item => ({
+        ...item,
+        read: true,
+        readAt: item.readAt || new Date().toISOString()
+      })))
+      setUnreadCount(0)
+    } catch (error) {
+      console.warn('Could not mark all notifications as read:', error)
+    }
+  }
 
   // Load real database IDs so the demo identity switcher always matches MySQL.
   useEffect(() => {
@@ -85,7 +147,77 @@ export default function App() {
     <main className="main-area">
       <header className="topbar"><div className="topbar-left"><button className="icon-btn mobile-menu" onClick={() => setMenuOpen(true)}><Menu size={20}/></button><span className="breadcrumb">Portal <span>/</span> {pageTitle}</span></div><div className="topbar-right">
         <div className="demo-label"><span className="online-dot"/> {demoMode ? 'LOCAL DEMO' : 'CONNECTED'}</div>
-        <button className="icon-btn notification-btn" title="Notifications"><Bell size={18}/><i/></button>
+        <div style={{position:'relative'}}>
+          <button
+            type="button"
+            className="icon-btn notification-btn"
+            title="Notifications"
+            aria-label={'Notifications, '+unreadCount+' unread'}
+            aria-expanded={notificationsOpen}
+            onClick={() => {
+              setNotificationsOpen(value => !value)
+              if (!notificationsOpen) loadNotifications(true)
+            }}
+            style={{position:'relative'}}
+          >
+            <Bell size={18}/>
+            {unreadCount>0&&<span style={{
+              position:'absolute',top:-4,right:-4,minWidth:17,height:17,padding:'0 4px',
+              borderRadius:20,background:'#df4b58',color:'#fff',fontSize:9,fontWeight:800,
+              display:'grid',placeItems:'center',border:'2px solid #fff'
+            }}>{unreadCount>99?'99+':unreadCount}</span>}
+          </button>
+          {notificationsOpen&&<div style={{
+            position:'absolute',right:0,top:'calc(100% + 12px)',width:'min(390px, calc(100vw - 28px))',
+            background:'#fff',border:'1px solid #e6eaf1',borderRadius:13,
+            boxShadow:'0 18px 50px rgba(28,42,72,.18)',zIndex:1000,overflow:'hidden'
+          }}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'14px 16px',borderBottom:'1px solid #edf0f5'}}>
+              <div>
+                <b style={{display:'block',fontSize:13,color:'#26344d'}}>Notifications</b>
+                <small style={{fontSize:10,color:'#8994a7'}}>{unreadCount} unread</small>
+              </div>
+              <button
+                type="button"
+                className="btn btn-quiet btn-sm"
+                onClick={markAllNotificationsRead}
+                disabled={unreadCount===0}
+              >Mark all read</button>
+            </div>
+            <div style={{maxHeight:420,overflowY:'auto'}}>
+              {notificationsLoading
+                ?<div style={{padding:24,textAlign:'center',fontSize:11,color:'#8994a7'}}>Loading notifications…</div>
+                :notifications.length===0
+                  ?<div style={{padding:28,textAlign:'center'}}>
+                    <Bell size={22} color="#a0aabd"/>
+                    <b style={{display:'block',marginTop:8,fontSize:12,color:'#4c5b72'}}>You're all caught up</b>
+                    <small style={{fontSize:10,color:'#98a3b5'}}>New loan and support updates will appear here.</small>
+                  </div>
+                  :notifications.map(item=><button
+                    type="button"
+                    key={item.id}
+                    onClick={()=>openNotification(item)}
+                    style={{
+                      display:'block',width:'100%',padding:'12px 16px',textAlign:'left',
+                      border:0,borderBottom:'1px solid #f0f2f6',
+                      background:item.read?'#fff':'#f5f7ff',cursor:'pointer'
+                    }}
+                  >
+                    <span style={{display:'flex',alignItems:'flex-start',gap:9}}>
+                      <span style={{width:8,height:8,marginTop:5,flex:'0 0 8px',borderRadius:50,background:item.read?'#dce1e9':'#5068dc'}}/>
+                      <span style={{minWidth:0,flex:1}}>
+                        <b style={{display:'block',fontSize:11,color:'#34415a',lineHeight:1.4}}>{item.title}</b>
+                        <span style={{display:'block',fontSize:10,color:'#66748a',lineHeight:1.5,marginTop:3}}>{item.message}</span>
+                        <small style={{display:'block',fontSize:9,color:'#98a3b5',marginTop:5}}>{dateTime(item.createdAt)}</small>
+                      </span>
+                    </span>
+                  </button>)}
+            </div>
+            <div style={{padding:'9px 16px',background:'#fafbfc',borderTop:'1px solid #edf0f5',display:'flex',justifyContent:'flex-end'}}>
+              <button type="button" className="btn btn-quiet btn-sm" onClick={()=>setNotificationsOpen(false)}>Close</button>
+            </div>
+          </div>}
+        </div>
         <div className="user-menu"><div className="avatar">{user.name.split(' ').map(x=>x[0]).slice(0,2).join('')}</div><div className="user-meta"><b>{user.name}</b><small>{user.role}{user.serviceGroup ? ` · Group ${user.serviceGroup}` : ''}</small></div><select aria-label="Switch demo user" value={user.id} onChange={e=>changeUser(e.target.value)} title="Demo identity selector">{demoUsers.map(u=><option key={u.id} value={u.id}>{u.username} · {u.role}{u.serviceGroup ? ` · Group ${u.serviceGroup}` : ''}</option>)}</select><button className="icon-btn" onClick={logout} title="Sign out"><LogOut size={17}/></button></div>
       </div></header>
       <div className="page-wrap"><Routes>
