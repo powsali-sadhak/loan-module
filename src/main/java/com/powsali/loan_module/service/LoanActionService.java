@@ -29,6 +29,7 @@ public class LoanActionService {
     private final LoanRepository loanRepository;
     private final UserRepository userRepository;
     private final LoanEligibilityService eligibilityService;
+    private final NotificationService notificationService;
 
     @Transactional
     public LoanAction recordAction(Long loanId, Long actionById, ActionType actionType, String remarks) {
@@ -116,7 +117,9 @@ public class LoanActionService {
                 .actionType(actionType)
                 .remarks(remarks.trim())
                 .build();
-        return actionRepository.save(action);
+        LoanAction savedAction = actionRepository.save(action);
+        notificationService.loanAction(loan, actionType);
+        return savedAction;
     }
 
     @Transactional(readOnly = true)
@@ -197,6 +200,7 @@ public class LoanActionService {
                 .build();
 
         actionRepository.save(action);
+        notificationService.loanSubmitted(loan, true);
         return loan;
     }
 }
