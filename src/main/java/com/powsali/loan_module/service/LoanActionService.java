@@ -16,14 +16,19 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class LoanActionService {
 
+    private static final Set<Role> APPLICANT_ROLES =
+            Set.of(Role.EMPLOYEE, Role.DDO, Role.HOO);
+
     private final LoanActionRepository actionRepository;
     private final LoanRepository loanRepository;
     private final UserRepository userRepository;
+    private final LoanEligibilityService eligibilityService;
 
     @Transactional
     public LoanAction recordAction(Long loanId, Long actionById, ActionType actionType, String remarks) {
@@ -42,6 +47,11 @@ public class LoanActionService {
             throw new IllegalArgumentException("Remarks are required for workflow actions");
         }
 
+        // Officer applicants must be reviewed by a different officer at every step.
+        if (loan.getApplicant() != null && loan.getApplicant().getId().equals(user.getId())) {
+            throw new IllegalStateException("Applicants cannot approve, forward, reject or request revision on their own loan");
+        }
+
         List<ApprovalStep> steps = loan.getWorkflow() == null
                 ? List.of()
                 : loan.getWorkflow().getSteps().stream()
@@ -58,16 +68,25 @@ public class LoanActionService {
 
         switch (actionType) {
             case FORWARDED -> {
+                if (currentStep.getApproverRole() != Role.DDO) {
+                    throw new IllegalStateException("Only the DDO stage can forward an application to HOO");
+                }
                 ApprovalStep nextStep = steps.stream()
                         .filter(step -> step.getStepOrder() > currentStep.getStepOrder())
                         .findFirst()
                         .orElseThrow(() -> new IllegalStateException("This is the final approval step; approve or reject the application"));
+                if (nextStep.getApproverRole() != Role.HOO) {
+                    throw new IllegalStateException("The next approval step must be HOO");
+                }
                 loan.setCurrentStepOrder(nextStep.getStepOrder());
                 loan.setCurrentApproverRole(nextStep.getApproverRole());
                 loan.setCurrentOwner(nextStep.getApproverRole().name());
                 loan.setStatus(LoanStatus.PENDING_APPROVAL);
             }
             case APPROVED -> {
+                if (currentStep.getApproverRole() != Role.HOO) {
+                    throw new IllegalStateException("Only HOO can give final approval");
+                }
                 if (steps.stream().anyMatch(step -> step.getStepOrder() > currentStep.getStepOrder())) {
                     throw new IllegalStateException("Forward the application to the next configured approval step before final approval");
                 }
@@ -82,9 +101,10 @@ public class LoanActionService {
             }
             case REVISION_REQUESTED -> {
                 loan.setStatus(LoanStatus.REVISION_REQUESTED);
-                loan.setCurrentOwner(Role.EMPLOYEE.name());
-                loan.setCurrentApproverRole(Role.EMPLOYEE);
+                loan.setCurrentOwner(loan.getApplicant().getRole().name());
+                loan.setCurrentApproverRole(loan.getApplicant().getRole());
             }
+            case RESUBMITTED -> throw new IllegalStateException("Use the resubmit endpoint to resubmit an application");
         }
 
         loan.setRemarks(remarks.trim());
@@ -100,100 +120,82 @@ public class LoanActionService {
     }
 
     @Transactional(readOnly = true)
-public List<LoanAction> getActionsForLoan(Long loanId) {
-
-    return actionRepository
-            .findByLoanApplication_IdOrderByActionTimeAsc(loanId);
-}
+    public List<LoanAction> getActionsForLoan(Long loanId) {
+        return actionRepository.findByLoanApplication_IdOrderByActionTimeAsc(loanId);
+    }
 
     @Transactional
-public LoanApplication resubmitLoan(
-        Long loanId,
-        Long employeeId,
-        Double amount,
-        String purpose,
-        String remarks
-) {
+    public LoanApplication resubmitLoan(
+            Long loanId,
+            Long applicantId,
+            Double amount,
+            String purpose,
+            String remarks) {
 
-    LoanApplication loan = loanRepository.findById(loanId)
-            .orElseThrow(() ->
-                    new IllegalArgumentException("Loan not found"));
+        LoanApplication loan = loanRepository.findById(loanId)
+                .orElseThrow(() -> new IllegalArgumentException("Loan not found"));
 
-    User employee = userRepository.findById(employeeId)
-            .orElseThrow(() ->
-                    new IllegalArgumentException("Employee not found"));
+        User applicant = userRepository.findById(applicantId)
+                .orElseThrow(() -> new IllegalArgumentException("Applicant not found"));
 
-    // Only employees can resubmit
-    if (employee.getRole() != Role.EMPLOYEE) {
-        throw new IllegalStateException(
-                "Only employees can resubmit loan applications");
+        if (!APPLICANT_ROLES.contains(applicant.getRole())) {
+            throw new IllegalStateException("Only EMPLOYEE, DDO or HOO applicants can resubmit a loan application");
+        }
+
+        if (loan.getApplicant() == null || !loan.getApplicant().getId().equals(applicantId)) {
+            throw new IllegalStateException("You can only resubmit your own loan application");
+        }
+
+        if (loan.getStatus() != LoanStatus.REVISION_REQUESTED) {
+            throw new IllegalStateException("This application is not awaiting revision");
+        }
+
+        if (purpose == null || purpose.isBlank()) {
+            throw new IllegalArgumentException("Loan purpose is required");
+        }
+
+        if (remarks == null || remarks.isBlank()) {
+            throw new IllegalArgumentException("Resubmission remarks are required");
+        }
+
+        // Exclude this application's previous reservation while validating the revised amount.
+        eligibilityService.validateApplication(applicant, amount, loanId);
+
+        if (loan.getWorkflow() == null) {
+            throw new IllegalStateException("The assigned approval workflow is missing");
+        }
+
+        List<ApprovalStep> steps = loan.getWorkflow().getSteps()
+                .stream()
+                .sorted(Comparator.comparing(ApprovalStep::getStepOrder))
+                .toList();
+
+        ApprovalStep firstStep = steps.stream()
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("The assigned workflow has no approval steps"));
+
+        if (firstStep.getApproverRole() != Role.DDO) {
+            throw new IllegalStateException("The first approval step must be DDO");
+        }
+
+        loan.setAmount(amount);
+        loan.setPurpose(purpose.trim());
+        loan.setRemarks(remarks.trim());
+        loan.setStatus(LoanStatus.PENDING_APPROVAL);
+        loan.setCurrentStepOrder(firstStep.getStepOrder());
+        loan.setCurrentApproverRole(firstStep.getApproverRole());
+        loan.setCurrentOwner(firstStep.getApproverRole().name());
+
+        loanRepository.save(loan);
+
+        LoanAction action = LoanAction.builder()
+                .loanApplication(loan)
+                .actionBy(applicant)
+                .actionType(ActionType.RESUBMITTED)
+                .remarks(remarks.trim())
+                .build();
+
+        actionRepository.save(action);
+        return loan;
     }
-
-    // Only the original applicant can resubmit
-    if (loan.getApplicant() == null
-            || !loan.getApplicant().getId().equals(employeeId)) {
-        throw new IllegalStateException(
-                "You can only resubmit your own loan application");
-    }
-
-    // Resubmission is permitted only after revision is requested
-    if (loan.getStatus() != LoanStatus.REVISION_REQUESTED) {
-        throw new IllegalStateException(
-                "This application is not awaiting revision");
-    }
-
-    if (amount == null || amount <= 0) {
-        throw new IllegalArgumentException(
-                "Loan amount must be greater than zero");
-    }
-
-    if (purpose == null || purpose.isBlank()) {
-        throw new IllegalArgumentException(
-                "Loan purpose is required");
-    }
-
-    if (remarks == null || remarks.isBlank()) {
-        throw new IllegalArgumentException(
-                "Resubmission remarks are required");
-    }
-
-    // Retrieve the original assigned workflow
-    List<ApprovalStep> steps = loan.getWorkflow()
-            .getSteps()
-            .stream()
-            .sorted(Comparator.comparing(
-                    ApprovalStep::getStepOrder))
-            .toList();
-
-    ApprovalStep firstStep = steps.stream()
-            .findFirst()
-            .orElseThrow(() ->
-                    new IllegalStateException(
-                            "The assigned workflow has no approval steps"));
-
-    // Update application details
-    loan.setAmount(amount);
-    loan.setPurpose(purpose.trim());
-    loan.setRemarks(remarks.trim());
-
-    // Restart approval at the first workflow step
-    loan.setStatus(LoanStatus.PENDING_APPROVAL);
-    loan.setCurrentStepOrder(firstStep.getStepOrder());
-    loan.setCurrentApproverRole(firstStep.getApproverRole());
-    loan.setCurrentOwner(firstStep.getApproverRole().name());
-
-    loanRepository.save(loan);
-
-    // Record resubmission in audit history
-    LoanAction action = LoanAction.builder()
-            .loanApplication(loan)
-            .actionBy(employee)
-            .actionType(ActionType.RESUBMITTED)
-            .remarks(remarks.trim())
-            .build();
-
-    actionRepository.save(action);
-
-    return loan;
-}
 }
