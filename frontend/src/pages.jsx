@@ -125,9 +125,108 @@ function ActivityIcon(){return <Clock3 size={18} className="muted-icon"/>}
 
 export function Approvals({user}) {
   const [id,setId]=useState(''),[loan,setLoan]=useState(null),[actions,setActions]=useState([]),[remarks,setRemarks]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[success,setSuccess]=useState('')
-  async function find(e){e?.preventDefault();if(!id)return;setBusy(true);setError('');setSuccess('');try{const [l,a]=await Promise.all([api.get(`/api/loans/${id}`),api.get(`/api/loans/${id}/actions`)]);setLoan(l.data);setActions(a.data||[])}catch(e){setError(friendlyError(e));setLoan(null)}finally{setBusy(false)}}
-  async function act(actionType){setBusy(true);setError('');setSuccess('');try{await api.post('/api/loans/action',{loanId:Number(id),userId:user.id,actionType,remarks});setSuccess(`Action ${titleCase(actionType).toLowerCase()} successfully.`);await find()}catch(e){setError(friendlyError(e))}finally{setBusy(false)}}
-  return <><PageHeader eyebrow="OPERATIONS" title="Approval desk" subtitle="Review a loan by its reference number and record the next workflow action."/><div className="panel lookup-panel"><form className="lookup-form" onSubmit={find}><label className="field"><span>Loan application ID</span><input type="number" min="1" required value={id} onChange={e=>setId(e.target.value)} placeholder="Enter numeric loan ID"/></label><button className="btn btn-primary" disabled={busy}>{busy?<LoaderCircle className="spin" size={16}/>:<Search size={16}/>} Find application</button></form></div>{error&&<Alert>{error}</Alert>}{success&&<Alert type="success">{success}</Alert>}{loan&&<div className="detail-grid"><section className="panel detail-main"><div className="detail-top"><div><span className="muted-label">REQUESTED AMOUNT</span><div className="detail-amount">{money(loan.amount)}</div></div><Status value={loan.status}/></div><div className="detail-kv"><div><small>Application</small><b>LN-{loan.loanId}</b></div><div><small>Current owner</small><b>{loan.currentOwner||'—'}</b></div><div><small>Required role</small><b>{loan.currentApproverRole||'—'}</b></div><div><small>Current step</small><b>{loan.currentStepOrder||'—'}</b></div></div><div className="detail-purpose"><small>PURPOSE</small><p>{loan.purpose}</p></div><label className="field"><span>Action remarks</span><textarea rows="3" value={remarks} onChange={e=>setRemarks(e.target.value)} placeholder="Add a note for the applicant or next approver…"/></label><div className="action-buttons"><button disabled={busy||!remarks.trim()||loan.status!=='PENDING_APPROVAL'} className="btn btn-quiet" onClick={()=>act('REVISION_REQUESTED')}>Request revision</button><button disabled={busy||!remarks.trim()||loan.status!=='PENDING_APPROVAL'} className="btn btn-danger" onClick={()=>act('REJECTED')}>Reject</button><button disabled={busy||!remarks.trim()||loan.status!=='PENDING_APPROVAL'} className="btn btn-primary" onClick={()=>act(loan.currentApproverRole==='HOO'?'APPROVED':'FORWARDED')}>{loan.currentApproverRole==='HOO'?'Approve':'Forward'} <ArrowRight size={15}/></button></div></section><section className="panel timeline-panel"><div className="panel-heading"><div><h3>Application history</h3><p>Recorded actions</p></div><Clock3 size={18}/></div><div className="timeline">{actions.map(a=><div className="timeline-item" key={a.actionId}><div className="timeline-dot"><Check size={13}/></div><div><b>{titleCase(a.actionType)}</b><small>{a.actionBy} · {dateTime(a.actionTime)}</small><p>{a.remarks}</p></div></div>)}</div></section></div>}</>
+  const [repayments,setRepayments]=useState([]),[repaymentAmount,setRepaymentAmount]=useState(''),[repaymentRemarks,setRepaymentRemarks]=useState('')
+
+  async function find(e){
+    e?.preventDefault()
+    if(!id)return
+    setBusy(true);setError('');setSuccess('')
+    try{
+      const [l,a]=await Promise.all([
+        api.get(`/api/loans/${id}`),
+        api.get(`/api/loans/${id}/actions`)
+      ])
+      setLoan(l.data)
+      setActions(a.data||[])
+      if(l.data.status==='APPROVED'){
+        const repaymentResponse=await api.get(`/api/loans/${id}/repayments`)
+        setRepayments(repaymentResponse.data||[])
+      }else{
+        setRepayments([])
+      }
+    }catch(e){setError(friendlyError(e));setLoan(null);setRepayments([])}
+    finally{setBusy(false)}
+  }
+
+  async function act(actionType){
+    setBusy(true);setError('');setSuccess('')
+    try{
+      await api.post('/api/loans/action',{loanId:Number(id),userId:user.id,actionType,remarks})
+      const message=`Action ${titleCase(actionType).toLowerCase()} successfully.`
+      await find()
+      setSuccess(message)
+      setRemarks('')
+    }catch(e){setError(friendlyError(e))}
+    finally{setBusy(false)}
+  }
+
+  async function recordRepayment(e){
+    e.preventDefault()
+    setBusy(true);setError('');setSuccess('')
+    try{
+      await api.post(`/api/loans/${id}/repayments`,{
+        recordedById:user.id,
+        amount:Number(repaymentAmount),
+        remarks:repaymentRemarks
+      })
+      await find()
+      setSuccess('Principal repayment recorded successfully.')
+      setRepaymentAmount('')
+      setRepaymentRemarks('')
+    }catch(e){setError(friendlyError(e))}
+    finally{setBusy(false)}
+  }
+
+  const totalRecovered=repayments.reduce((sum,item)=>sum+Number(item.amount||0),0)
+  const recoveryPercent=loan?.amount?Math.min(100,(totalRecovered/Number(loan.amount))*100):0
+
+  return <>
+    <PageHeader eyebrow="OPERATIONS" title="Approval desk" subtitle="Review applications, record approval decisions and maintain principal recovery records."/>
+    <div className="panel lookup-panel"><form className="lookup-form" onSubmit={find}><label className="field"><span>Loan application ID</span><input type="number" min="1" required value={id} onChange={e=>setId(e.target.value)} placeholder="Enter numeric loan ID"/></label><button className="btn btn-primary" disabled={busy}>{busy?<LoaderCircle className="spin" size={16}/>:<Search size={16}/>} Find application</button></form></div>
+    {error&&<Alert>{error}</Alert>}
+    {success&&<Alert type="success">{success}</Alert>}
+    {loan&&<>
+      <div className="detail-grid">
+        <section className="panel detail-main">
+          <div className="detail-top"><div><span className="muted-label">REQUESTED AMOUNT</span><div className="detail-amount">{money(loan.amount)}</div></div><Status value={loan.status}/></div>
+          <div className="detail-kv">
+            <div><small>Application</small><b>LN-{loan.loanId}</b></div>
+            <div><small>Applicant</small><b>{loan.applicantName||`User ${loan.applicantId}`}</b></div>
+            <div><small>Applicant group</small><b>{loan.applicantGroup||'—'}</b></div>
+            <div><small>Current owner</small><b>{loan.currentOwner||'—'}</b></div>
+            <div><small>Required role</small><b>{loan.currentApproverRole||'—'}</b></div>
+            <div><small>Current step</small><b>{loan.currentStepOrder||'—'}</b></div>
+          </div>
+          <div className="detail-purpose"><small>PURPOSE</small><p>{loan.purpose}</p></div>
+          {loan.status==='PENDING_APPROVAL'&&<><label className="field"><span>Action remarks</span><textarea rows="3" value={remarks} onChange={e=>setRemarks(e.target.value)} placeholder="Add a note for the applicant or next approver…"/></label><div className="action-buttons"><button disabled={busy||!remarks.trim()} className="btn btn-quiet" onClick={()=>act('REVISION_REQUESTED')}>Request revision</button><button disabled={busy||!remarks.trim()} className="btn btn-danger" onClick={()=>act('REJECTED')}>Reject</button><button disabled={busy||!remarks.trim()} className="btn btn-primary" onClick={()=>act(loan.currentApproverRole==='HOO'?'APPROVED':'FORWARDED')}>{loan.currentApproverRole==='HOO'?'Approve':'Forward'} <ArrowRight size={15}/></button></div></>}
+          {loan.status==='REVISION_REQUESTED'&&<Alert>Awaiting the applicant's revised submission.</Alert>}
+          {['DDO','HOO'].includes(user.role)&&loan.applicantId===user.id&&<Alert>You are the applicant. Another officer in the approval hierarchy must review this application.</Alert>}
+        </section>
+        <section className="panel timeline-panel">
+          <div className="panel-heading"><div><h3>Application history</h3><p>Recorded actions</p></div><Clock3 size={18}/></div>
+          {actions.length?<div className="timeline">{actions.map(a=><div className="timeline-item" key={a.actionId}><div className="timeline-dot"><Check size={13}/></div><div><b>{titleCase(a.actionType)}</b><small>{a.actionBy} · {dateTime(a.actionTime)}</small><p>{a.remarks}</p></div></div>)}</div>:<Empty title="No actions recorded" copy="No officer action has been recorded yet."/>}
+        </section>
+      </div>
+      {loan.status==='APPROVED'&&<section className="panel table-panel" style={{marginTop:18}}>
+        <div className="panel-heading"><div><h3>Principal recovery</h3><p>Record repayments against this approved loan</p></div><Status value={recoveryPercent>=70?'70% RECOVERED':'RECOVERY IN PROGRESS'}/></div>
+        <div className="detail-kv">
+          <div><small>Original principal</small><b>{money(loan.amount)}</b></div>
+          <div><small>Recovered so far</small><b>{money(totalRecovered)}</b></div>
+          <div><small>Outstanding principal</small><b>{money(Math.max(0,Number(loan.amount)-totalRecovered))}</b></div>
+          <div><small>Recovered percentage</small><b>{recoveryPercent.toFixed(1)}%</b></div>
+        </div>
+        <form className="ticket-form" onSubmit={recordRepayment}>
+          <div className="form-grid">
+            <label className="field"><span>Principal repayment amount</span><input required type="number" min="1" step="1" value={repaymentAmount} onChange={e=>setRepaymentAmount(e.target.value)} placeholder="Amount received in INR"/></label>
+            <label className="field"><span>Remarks / reference</span><input value={repaymentRemarks} onChange={e=>setRepaymentRemarks(e.target.value)} placeholder="Salary recovery / receipt reference"/></label>
+          </div>
+          <div className="form-actions"><button className="btn btn-primary" disabled={busy||!repaymentAmount||Number(repaymentAmount)<=0||loan.applicantId===user.id}><Check size={15}/> Record repayment</button></div>
+        </form>
+        {repayments.length>0&&<div className="ticket-list">{repayments.map(item=><div className="ticket-row" key={item.repaymentId}><div className="ticket-symbol"><Wallet size={18}/></div><div className="ticket-main"><b>{money(item.amount)}</b><small>{dateTime(item.receivedAt)} · Recorded by {item.recordedBy||'Officer'}</small></div></div>)}</div>}
+        <div className="form-note"><ShieldCheck size={17}/><span>After 70% of the current financial year's principal usage is recovered, recovered principal restores the available group entitlement. Only DDO, HOO or ADMIN users other than the borrower can record repayments.</span></div>
+      </section>}
+    </>}
+  </>
 }
 
 export function Support({user}) {
