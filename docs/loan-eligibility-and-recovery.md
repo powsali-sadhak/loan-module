@@ -51,7 +51,6 @@ Request body:
 
 ```json
 {
-  "recordedById": 8,
   "amount": 700000,
   "remarks": "Salary recovery reference"
 }
