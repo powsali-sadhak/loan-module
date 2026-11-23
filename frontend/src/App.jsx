@@ -8,7 +8,7 @@ import {
 import api, { friendlyError, setToken } from './api'
 import { DEMO_USERS, money } from './data'
 import {
-  Dashboard, ApplyLoan, MyLoans, LoanDetails, Approvals, RecoveryHistory, Support, AdminWorkflows, Login
+  Dashboard, ApplyLoan, MyLoans, LoanDetails, Approvals, RecoveryHistory, Support, SupportDesk, AdminWorkflows, Login
 } from './pages'
 
 const nav = [
@@ -20,7 +20,8 @@ const nav = [
   { label: 'Operations', items: [
     { to: '/approvals', label: 'Approval desk', icon: ClipboardCheck, roles: ['DDO','HOO','ADMIN'] },
     { to: '/recoveries', label: 'Recovery history', icon: History, roles: ['EMPLOYEE','DDO','HOO','ADMIN'] },
-    { to: '/support', label: 'Support centre', icon: Headphones }
+    { to: '/support', label: 'Support centre', icon: Headphones },
+    { to: '/support/desk', label: 'Support staff desk', icon: ClipboardCheck, roles: ['SUPPORT','ADMIN'] }
   ]},
   { label: 'Administration', items: [
     { to: '/admin/workflows', label: 'Approval workflows', icon: Workflow, roles: ['ADMIN'] }
@@ -87,6 +88,7 @@ export default function App() {
         <Route path="/approvals" element={<Approvals user={user}/>}/>
         <Route path="/recoveries" element={<RecoveryHistory user={user}/>}/>
         <Route path="/support" element={<Support user={user}/>}/>
+        <Route path="/support/desk" element={<SupportDesk user={user}/>}/>
         <Route path="/admin/workflows" element={<AdminWorkflows user={user}/>}/>
         <Route path="*" element={<Navigate to="/" replace/>}/>
       </Routes></div>
