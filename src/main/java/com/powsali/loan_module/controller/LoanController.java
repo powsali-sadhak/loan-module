@@ -1,18 +1,17 @@
-
 package com.powsali.loan_module.controller;
 
-import com.powsali.loan_module.dto.LoanRequestDTO;
 import com.powsali.loan_module.dto.LoanActionDTO;
+import com.powsali.loan_module.dto.LoanRepaymentRequestDTO;
+import com.powsali.loan_module.dto.LoanRequestDTO;
 import com.powsali.loan_module.dto.LoanResubmissionDTO;
-
-import com.powsali.loan_module.entity.LoanApplication;
 import com.powsali.loan_module.entity.LoanAction;
-
-import com.powsali.loan_module.service.LoanService;
+import com.powsali.loan_module.entity.LoanApplication;
+import com.powsali.loan_module.entity.LoanRepayment;
 import com.powsali.loan_module.service.LoanActionService;
-
+import com.powsali.loan_module.service.LoanEligibilityService;
+import com.powsali.loan_module.service.LoanRepaymentService;
+import com.powsali.loan_module.service.LoanService;
 import lombok.RequiredArgsConstructor;
-
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -27,33 +26,35 @@ public class LoanController {
 
     private final LoanService loanService;
     private final LoanActionService loanActionService;
+    private final LoanEligibilityService eligibilityService;
+    private final LoanRepaymentService repaymentService;
 
-    // Apply for a new loan
+    // Current group entitlement, financial-year usage and 70% recovery status.
+    @GetMapping("/eligibility/{applicantId}")
+    public ResponseEntity<?> getEligibility(@PathVariable Long applicantId) {
+        return ResponseEntity.ok(eligibilityService.getEligibility(applicantId));
+    }
+
+    // Apply for a new loan.
     @PostMapping("/apply")
-    public ResponseEntity<?> applyLoan(
-            @RequestBody LoanRequestDTO request) {
-
+    public ResponseEntity<?> applyLoan(@RequestBody LoanRequestDTO request) {
         LoanApplication loan = loanService.applyLoan(
                 request.getApplicantId(),
                 request.getAppliedById(),
                 request.getAmount(),
-                request.getPurpose()
-        );
+                request.getPurpose());
 
         return ResponseEntity.ok(toLoanResponse(loan));
     }
 
-    // Approve, reject, forward or request revision
+    // Approve, reject, forward or request revision.
     @PostMapping("/action")
-    public ResponseEntity<?> takeAction(
-            @RequestBody LoanActionDTO actionDTO) {
-
+    public ResponseEntity<?> takeAction(@RequestBody LoanActionDTO actionDTO) {
         LoanAction action = loanActionService.recordAction(
                 actionDTO.getLoanId(),
                 actionDTO.getUserId(),
                 actionDTO.getActionType(),
-                actionDTO.getRemarks()
-        );
+                actionDTO.getRemarks());
 
         Map<String, Object> response = new HashMap<>();
         response.put("message", "Loan action recorded successfully");
@@ -65,7 +66,7 @@ public class LoanController {
         return ResponseEntity.ok(response);
     }
 
-    // Resubmit a loan after revision is requested
+    // Resubmit a loan after revision is requested.
     @PostMapping("/{loanId}/resubmit")
     public ResponseEntity<?> resubmitLoan(
             @PathVariable Long loanId,
@@ -76,94 +77,109 @@ public class LoanController {
                 request.getEmployeeId(),
                 request.getAmount(),
                 request.getPurpose(),
-                request.getRemarks()
-        );
+                request.getRemarks());
 
         return ResponseEntity.ok(toLoanResponse(loan));
     }
 
-    // Get loan details
+    // Record principal recovery for an approved loan.
+    // Only a different DDO, HOO or ADMIN may record a repayment.
+    @PostMapping("/{loanId}/repayments")
+    public ResponseEntity<?> recordRepayment(
+            @PathVariable Long loanId,
+            @RequestBody LoanRepaymentRequestDTO request) {
+
+        LoanRepayment repayment = repaymentService.recordRepayment(
+                loanId,
+                request.getRecordedById(),
+                request.getAmount(),
+                request.getRemarks());
+
+        return ResponseEntity.ok(toRepaymentResponse(repayment));
+    }
+
+    @GetMapping("/{loanId}/repayments")
+    public ResponseEntity<?> getRepayments(@PathVariable Long loanId) {
+        List<Map<String, Object>> repayments = repaymentService.getRepayments(loanId)
+                .stream()
+                .map(this::toRepaymentResponse)
+                .toList();
+
+        return ResponseEntity.ok(repayments);
+    }
+
+    // Get loan details.
     @GetMapping("/{loanId}")
-    public ResponseEntity<?> getLoan(
-            @PathVariable Long loanId) {
-
+    public ResponseEntity<?> getLoan(@PathVariable Long loanId) {
         LoanApplication loan = loanService.getLoanById(loanId)
-                .orElseThrow(() ->
-                        new RuntimeException("Loan application not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Loan application not found"));
 
         return ResponseEntity.ok(toLoanResponse(loan));
     }
 
-    // Get all loans submitted by an applicant
+    // Get all loans submitted by an applicant.
     @GetMapping("/user/{userId}")
-    public ResponseEntity<?> getLoansByApplicant(
-            @PathVariable Long userId) {
-
-        List<Map<String, Object>> loans =
-                loanService.getLoansByApplicant(userId)
-                        .stream()
-                        .map(this::toLoanResponse)
-                        .toList();
+    public ResponseEntity<?> getLoansByApplicant(@PathVariable Long userId) {
+        List<Map<String, Object>> loans = loanService.getLoansByApplicant(userId)
+                .stream()
+                .map(this::toLoanResponse)
+                .toList();
 
         return ResponseEntity.ok(loans);
     }
 
-    // Get loan action history
+    // Get loan action history.
     @GetMapping("/{loanId}/actions")
-    public ResponseEntity<?> getLoanActions(
-            @PathVariable Long loanId) {
-
+    public ResponseEntity<?> getLoanActions(@PathVariable Long loanId) {
         loanService.getLoanById(loanId)
-                .orElseThrow(() ->
-                        new RuntimeException("Loan application not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Loan application not found"));
 
-        List<Map<String, Object>> actions =
-                loanActionService.getActionsForLoan(loanId)
-                        .stream()
-                        .map(this::toActionResponse)
-                        .toList();
+        List<Map<String, Object>> actions = loanActionService.getActionsForLoan(loanId)
+                .stream()
+                .map(this::toActionResponse)
+                .toList();
 
         return ResponseEntity.ok(actions);
     }
 
-    // Safe loan response
-    private Map<String, Object> toLoanResponse(
-            LoanApplication loan) {
-
+    private Map<String, Object> toLoanResponse(LoanApplication loan) {
         Map<String, Object> response = new HashMap<>();
-
         response.put("loanId", loan.getId());
         response.put("applicantId", loan.getApplicant().getId());
-        response.put("appliedById",
-                loan.getAppliedBy() != null
-                        ? loan.getAppliedBy().getId() : null);
+        response.put("applicantName", loan.getApplicant().getName());
+        response.put("applicantRole", loan.getApplicant().getRole());
+        response.put("applicantGroup", loan.getApplicant().getServiceGroup());
+        response.put("appliedById", loan.getAppliedBy() != null ? loan.getAppliedBy().getId() : null);
         response.put("amount", loan.getAmount());
         response.put("purpose", loan.getPurpose());
         response.put("status", loan.getStatus());
         response.put("currentOwner", loan.getCurrentOwner());
         response.put("currentStepOrder", loan.getCurrentStepOrder());
-        response.put("currentApproverRole",
-                loan.getCurrentApproverRole());
+        response.put("currentApproverRole", loan.getCurrentApproverRole());
         response.put("createdAt", loan.getCreatedAt());
         response.put("updatedAt", loan.getUpdatedAt());
-
         return response;
     }
 
-    // Safe action history response
-    private Map<String, Object> toActionResponse(
-            LoanAction action) {
-
+    private Map<String, Object> toActionResponse(LoanAction action) {
         Map<String, Object> response = new HashMap<>();
-
         response.put("actionId", action.getId());
         response.put("actionType", action.getActionType());
         response.put("remarks", action.getRemarks());
         response.put("actionTime", action.getActionTime());
-        response.put("actionBy",
-                action.getActionBy() != null
-                        ? action.getActionBy().getName() : null);
+        response.put("actionBy", action.getActionBy() != null ? action.getActionBy().getName() : null);
+        return response;
+    }
 
+    private Map<String, Object> toRepaymentResponse(LoanRepayment repayment) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("repaymentId", repayment.getId());
+        response.put("loanId", repayment.getLoanApplication().getId());
+        response.put("amount", repayment.getAmount());
+        response.put("remarks", repayment.getRemarks());
+        response.put("receivedAt", repayment.getReceivedAt());
+        response.put("recordedBy", repayment.getRecordedBy() != null
+                ? repayment.getRecordedBy().getName() : null);
         return response;
     }
 }
