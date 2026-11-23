@@ -380,6 +380,7 @@ function LoanDocuments({loan,user}) {
       const response = await api.get(`/api/loans/${loan.loanId}/documents`)
       setDocuments(Array.isArray(response.data) ? response.data : [])
     } catch (e) {
+      setDocuments([])
       setError(friendlyError(e))
     } finally {
       if (showLoading) setLoading(false)
@@ -388,10 +389,11 @@ function LoanDocuments({loan,user}) {
 
   useEffect(() => {
     loadDocuments()
-  }, [loan.loanId])
+  }, [loan.loanId,user.id])
 
   async function uploadDocument(event) {
     event.preventDefault()
+    const formElement = event.currentTarget
     if (!selectedFile) {
       setError('Choose a PDF, JPG or PNG document first.')
       return
@@ -407,9 +409,9 @@ function LoanDocuments({loan,user}) {
     try {
       const body = new FormData()
       body.append('document', selectedFile)
-      await api.post(`/api/loans/${loan.loanId}/documents`, body)
+      await api.post(`/api/loans/${loan.loanId}/documents`, body, { headers: { 'Content-Type': undefined } })
       setSelectedFile(null)
-      const picker = event.currentTarget.querySelector('input[type="file"]')
+      const picker = formElement.querySelector('input[type="file"]')
       if (picker) picker.value = ''
       setSuccess('Document uploaded successfully.')
       await loadDocuments(false)
