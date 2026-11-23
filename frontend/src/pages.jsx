@@ -569,6 +569,29 @@ export function RecoveryHistory({user}) {
       &&(!toDate||receivedDate<=toDate)
   })
 
+  // Keep each loan's scheduled instalments and actual payments together.
+  const loanIds=Array.from(new Set([
+    ...filteredSchedules.map(item=>Number(item.loanId)),
+    ...filtered.map(item=>Number(item.loanId))
+  ])).sort((a,b)=>a-b)
+
+  const recoveryGroups=loanIds.map(loanId=>{
+    const schedules=filteredSchedules.filter(item=>Number(item.loanId)===loanId)
+    const payments=filtered.filter(item=>Number(item.loanId)===loanId)
+    const sample=schedules[0]||payments[0]||{}
+    return {
+      loanId,
+      applicantName:sample.applicantName,
+      applicantRole:sample.applicantRole,
+      applicantGroup:sample.applicantGroup,
+      schedules,
+      payments,
+      scheduledTotal:schedules.reduce((sum,item)=>sum+Number(item.recoveryAmount||0),0),
+      paidTotal:schedules.reduce((sum,item)=>sum+Number(item.paidAmount||0),0),
+      paymentTotal:payments.reduce((sum,item)=>sum+Number(item.recoveryAmount||0),0)
+    }
+  })
+
   function clearFilters(){
     setQuery('')
     setFromDate('')
@@ -647,8 +670,8 @@ export function RecoveryHistory({user}) {
 
     <section className="panel table-panel">
       <div className="panel-heading">
-        <div><h3>Scheduled recovery instalments</h3><p>Each instalment stays unpaid until an officer records the principal recovery.</p></div>
-        <span className="soft-tag">{filteredSchedules.length} instalments</span>
+        <div><h3>Recovery by loan number</h3><p>Each loan has its own instalment schedule and payment history.</p></div>
+        <span className="soft-tag">{recoveryGroups.length} loans</span>
       </div>
       <div className="filter-bar">
         <div className="search-field"><Search size={16}/><input aria-label="Search recovery records" placeholder="Search loan, borrower, status or officer…" value={query} onChange={e=>setQuery(e.target.value)}/></div>
@@ -656,74 +679,86 @@ export function RecoveryHistory({user}) {
         <label className="field" style={{margin:0,minWidth:140}}><span>To date</span><input type="date" min={fromDate||undefined} value={toDate} onChange={e=>setToDate(e.target.value)}/></label>
         <button className="btn btn-quiet btn-sm" onClick={clearFilters}>Clear filters</button>
       </div>
-      {loading?<Spinner/>:filteredSchedules.length===0
-        ?<Empty title="No scheduled instalments" copy={scheduleRows.length?'No schedule rows match your current filters.':'Once a borrower chooses a monthly recovery amount for an approved loan, its due dates will appear here.'}/>
-        :<div className="table-scroll">
-          <table>
-            <thead><tr>
-              <th>LOAN</th>
-              <th>BORROWER</th>
-              <th>INSTALMENT</th>
-              <th>RECOVERY AMOUNT</th>
-              <th>DUE DATE</th>
-              <th>PAID AMOUNT</th>
-              <th>PAID ON</th>
-              <th>STATUS</th>
-            </tr></thead>
-            <tbody>
-              {filteredSchedules.map(item=><tr key={item.installmentId}>
-                <td><Link className="id-link" to={'/loans/'+item.loanId}>{'LN-'+String(item.loanId).padStart(5,'0')}</Link></td>
-                <td><b>{item.applicantName||'User '+item.applicantId}</b><small style={{display:'block',color:'#99a3b1',marginTop:4}}>{titleCase(item.applicantRole)} · Group {item.applicantGroup||'—'}</small></td>
-                <td>{'#'+item.installmentNumber}</td>
-                <td className="amount-cell">{money(item.recoveryAmount)}</td>
-                <td>{formatDate(item.dueDate)}</td>
-                <td>{money(item.paidAmount)}</td>
-                <td>{item.paidAt?dateTime(item.paidAt):'—'}</td>
-                <td><span className={'status-pill '+(item.status==='PAID'?'success':item.status==='PARTIALLY_PAID'?'warning':'neutral')}><i/>{titleCase(item.status)}</span></td>
-              </tr>)}
-            </tbody>
-          </table>
+      {loading?<Spinner/>:recoveryGroups.length===0
+        ?<Empty title="No recovery records found" copy={scheduleRows.length||records.length?'No loan records match your current filters.':'Once a monthly recovery schedule is created or a repayment is recorded, it will appear here under its loan number.'}/>
+        :<div style={{display:'grid',gap:16,padding:'0 18px 18px'}}>
+          {recoveryGroups.map(group=><section className="panel" key={group.loanId} style={{padding:0,overflow:'hidden',border:'1px solid #e8ecf3'}}>
+            <div className="panel-heading" style={{padding:'14px 16px',margin:0,background:'#f8f9fc',borderBottom:'1px solid #edf0f5'}}>
+              <div>
+                <h3><Link className="id-link" to={'/loans/'+group.loanId}>{'LN-'+String(group.loanId).padStart(5,'0')}</Link></h3>
+                <p>{group.applicantName||'Borrower'} · {titleCase(group.applicantRole)} · Group {group.applicantGroup||'—'}</p>
+              </div>
+              <div style={{textAlign:'right'}}>
+                <b>{money(group.scheduledTotal||group.paymentTotal)}</b>
+                <small style={{display:'block',color:'#8d99aa',marginTop:4}}>Scheduled / recorded in this view</small>
+              </div>
+            </div>
+
+            <div style={{padding:'14px 16px 8px'}}>
+              <div className="steps-heading" style={{marginBottom:8}}><span>SCHEDULED INSTALMENTS</span><span className="soft-tag">{group.schedules.length} instalments</span></div>
+              {group.schedules.length===0
+                ?<p style={{fontSize:10,color:'#98a1af',padding:'4px 0 10px'}}>No scheduled instalments for this loan yet.</p>
+                :<div className="table-scroll">
+                  <table>
+                    <thead><tr>
+                      <th>INSTALMENT</th>
+                      <th>RECOVERY AMOUNT</th>
+                      <th>DUE DATE</th>
+                      <th>PAID AMOUNT</th>
+                      <th>PAID ON</th>
+                      <th>STATUS</th>
+                    </tr></thead>
+                    <tbody>
+                      {group.schedules.map(item=><tr key={item.installmentId}>
+                        <td>{'#'+item.installmentNumber}</td>
+                        <td className="amount-cell">{money(item.recoveryAmount)}</td>
+                        <td>{formatDate(item.dueDate)}</td>
+                        <td>{money(item.paidAmount)}</td>
+                        <td>{item.paidAt?dateTime(item.paidAt):'—'}</td>
+                        <td><span className={'status-pill '+(item.status==='PAID'?'success':item.status==='PARTIALLY_PAID'?'warning':'neutral')}><i/>{titleCase(item.status)}</span></td>
+                      </tr>)}
+                    </tbody>
+                  </table>
+                </div>
+              }
+              {group.schedules.length>0&&<div style={{display:'flex',justifyContent:'flex-end',gap:18,flexWrap:'wrap',fontSize:10,color:'#8190a5',padding:'9px 0 4px'}}>
+                <span>Scheduled: <b>{money(group.scheduledTotal)}</b></span>
+                <span>Paid against schedule: <b>{money(group.paidTotal)}</b></span>
+                <span>Balance: <b>{money(Math.max(0,group.scheduledTotal-group.paidTotal))}</b></span>
+              </div>}
+            </div>
+
+            <div style={{padding:'10px 16px 16px'}}>
+              <div className="steps-heading" style={{marginBottom:8}}><span>ACTUAL RECOVERY PAYMENTS</span><span className="soft-tag">{group.payments.length} payments</span></div>
+              {group.payments.length===0
+                ?<p style={{fontSize:10,color:'#98a1af',padding:'4px 0 2px'}}>No payments have been recorded against this loan yet.</p>
+                :<div className="table-scroll">
+                  <table>
+                    <thead><tr>
+                      <th>RECEIVED ON</th>
+                      <th>RECOVERY REF</th>
+                      <th>RECOVERY AMOUNT</th>
+                      <th>RECORDED BY</th>
+                      <th>REMARKS</th>
+                    </tr></thead>
+                    <tbody>
+                      {group.payments.map(item=><tr key={item.repaymentId}>
+                        <td>{dateTime(item.receivedAt)}</td>
+                        <td className="id-link">{'REC-'+String(item.repaymentId).padStart(5,'0')}</td>
+                        <td className="amount-cell">{money(item.recoveryAmount)}</td>
+                        <td>{item.recordedByName||'—'}</td>
+                        <td className="purpose-cell">{item.remarks||'—'}</td>
+                      </tr>)}
+                    </tbody>
+                  </table>
+                </div>
+              }
+            </div>
+          </section>)}
         </div>
       }
     </section>
 
-    <section className="panel table-panel" style={{marginTop:18}}>
-      <div className="panel-heading">
-        <div><h3>Principal recovery payment log</h3><p>Actual repayments entered by DDO, HOO or ADMIN officers.</p></div>
-        <span className="soft-tag">{filtered.length} payments</span>
-      </div>
-      {loading?<Spinner/>:filtered.length===0
-        ?<Empty title="No recovery payments recorded" copy="Payments will appear here after an authorised officer records money received against an approved loan."/>
-        :<div className="table-scroll">
-          <table>
-            <thead><tr>
-              <th>RECEIVED ON</th>
-              <th>RECOVERY REF</th>
-              <th>LOAN APPLICATION</th>
-              <th>BORROWER</th>
-              <th>GROUP</th>
-              <th>LOAN PRINCIPAL</th>
-              <th>RECOVERED</th>
-              <th>RECORDED BY</th>
-              <th>REMARKS</th>
-            </tr></thead>
-            <tbody>
-              {filtered.map(item=><tr key={item.repaymentId}>
-                <td>{dateTime(item.receivedAt)}</td>
-                <td className="id-link">{'REC-'+String(item.repaymentId).padStart(5,'0')}</td>
-                <td><Link className="id-link" to={'/loans/'+item.loanId}>{'LN-'+String(item.loanId).padStart(5,'0')}</Link></td>
-                <td><b>{item.applicantName||'User '+item.applicantId}</b><small style={{display:'block',color:'#99a3b1',marginTop:4}}>{titleCase(item.applicantRole)}</small></td>
-                <td>{item.applicantGroup||'—'}</td>
-                <td>{money(item.loanAmount)}</td>
-                <td className="amount-cell">{money(item.recoveryAmount)}</td>
-                <td>{item.recordedByName||'—'}</td>
-                <td className="purpose-cell">{item.remarks||'—'}</td>
-              </tr>)}
-            </tbody>
-          </table>
-        </div>
-      }
-    </section>
   </>
 }
 
