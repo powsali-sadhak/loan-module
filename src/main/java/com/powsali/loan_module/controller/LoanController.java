@@ -108,6 +108,12 @@ public class LoanController {
         return ResponseEntity.ok(repayments);
     }
 
+    // Employee-scoped or department-wide recovery register, based on viewer role.
+    @GetMapping("/recoveries")
+    public ResponseEntity<?> getRecoveryHistory(@RequestParam Long viewerId) {
+        return ResponseEntity.ok(repaymentService.getRecoveryHistory(viewerId));
+    }
+
     // Get loan details.
     @GetMapping("/{loanId}")
     public ResponseEntity<?> getLoan(@PathVariable Long loanId) {
