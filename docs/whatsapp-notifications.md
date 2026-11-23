@@ -37,7 +37,7 @@ To disable WhatsApp delivery, set `WHATSAPP_ENABLED=false` or omit the variables
 
 ## 3. Add a recipient number and opt in
 
-In the local demo UI, select a demo identity and open the WhatsApp icon in the top bar. Enter a number in international format, for example `+919876543210`, and tick the consent checkbox.
+In the local demo UI, select a demo identity and open the WhatsApp icon in the top bar. Enter a number in international format, for example `+91XXXXXXXXXX`, and tick the consent checkbox.
 
 The settings are stored per demo user in MySQL. A ten-digit Indian number is also accepted and stored with the +91 country code. WhatsApp delivery is skipped when the user has not opted in, has no valid number, or WhatsApp integration is disabled.
 
@@ -45,7 +45,7 @@ The settings endpoint is local-demo-only:
 
 - `PATCH /api/demo/users/{userId}/whatsapp-settings`
 - Requires the matching `X-Demo-User-Id` header.
-- Request: `{"mobileNumber":"+919876543210","whatsappNotificationsEnabled":true}`
+- Request: `{"mobileNumber":"+91XXXXXXXXXX","whatsappNotificationsEnabled":true}`
 
 Do not expose this demo endpoint in a production profile. A production release needs authenticated profile management, number ownership verification, an auditable consent record, and opt-out controls.
 
