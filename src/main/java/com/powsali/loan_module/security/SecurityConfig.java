@@ -32,7 +32,7 @@ public class SecurityConfig {
     private String allowedOrigins;
 
     @Bean
-    @Profile("local-demo")
+    @Profile("local-demo & !prod")
     public SecurityFilterChain localDemoFilterChain(
             HttpSecurity http,
             DemoUserHeaderFilter demoUserHeaderFilter) throws Exception {
@@ -53,7 +53,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    @Profile("!local-demo")
+    @Profile("!local-demo | prod")
     public SecurityFilterChain authenticatedFilterChain(
             HttpSecurity http,
             JwtRequestFilter jwtRequestFilter) throws Exception {
@@ -114,7 +114,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    @Profile("!local-demo")
+    @Profile("!local-demo | prod")
     public JwtRequestFilter jwtRequestFilter(
             CustomUserDetailsService userDetailsService,
             JwtUtil jwtUtil) {
@@ -122,7 +122,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    @Profile("local-demo")
+    @Profile("local-demo & !prod")
     public FilterRegistrationBean<DemoUserHeaderFilter> disableDemoFilterServletRegistration(
             DemoUserHeaderFilter filter) {
         FilterRegistrationBean<DemoUserHeaderFilter> registration = new FilterRegistrationBean<>(filter);
@@ -131,7 +131,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    @Profile("!local-demo")
+    @Profile("!local-demo | prod")
     public FilterRegistrationBean<JwtRequestFilter> disableJwtFilterServletRegistration(
             JwtRequestFilter filter) {
         FilterRegistrationBean<JwtRequestFilter> registration = new FilterRegistrationBean<>(filter);
