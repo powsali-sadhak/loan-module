@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Activity, ArrowDownLeft, ArrowUpRight, Bell, BriefcaseBusiness, ChevronDown, CircleHelp,
+  Activity, ArrowDownLeft, ArrowUpRight, Bell, BriefcaseBusiness, ChevronDown, CircleHelp, MessageCircle,
   ClipboardCheck, CreditCard, FilePlus2, FileText, Gauge, Headphones, History, LayoutDashboard,
   LogOut, Menu, Plus, Search, Settings2, ShieldCheck, Sparkles, Users, Workflow, X
 } from 'lucide-react'
@@ -38,6 +38,11 @@ export default function App() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [notificationsLoading, setNotificationsLoading] = useState(false)
+  const [whatsAppOpen, setWhatsAppOpen] = useState(false)
+  const [whatsAppNumber, setWhatsAppNumber] = useState(user.mobileNumber || '')
+  const [whatsAppEnabled, setWhatsAppEnabled] = useState(Boolean(user.whatsappNotificationsEnabled))
+  const [whatsAppSaving, setWhatsAppSaving] = useState(false)
+  const [whatsAppStatus, setWhatsAppStatus] = useState('')
   const [demoMode, setDemoMode] = useState(import.meta.env.VITE_DEMO_MODE !== 'false')
   const location = useLocation()
   const navigate = useNavigate()
@@ -47,6 +52,12 @@ export default function App() {
   }, [location.pathname])
 
   useEffect(() => { localStorage.setItem('loan_demo_user', JSON.stringify(user)) }, [user])
+
+  useEffect(() => {
+    setWhatsAppNumber(user.mobileNumber || '')
+    setWhatsAppEnabled(Boolean(user.whatsappNotificationsEnabled))
+    setWhatsAppStatus('')
+  }, [user.id, user.mobileNumber, user.whatsappNotificationsEnabled])
 
   async function loadNotifications(showSpinner = false) {
     if (showSpinner) setNotificationsLoading(true)
@@ -106,6 +117,25 @@ export default function App() {
     }
   }
 
+  async function saveWhatsAppSettings(event) {
+    event.preventDefault()
+    setWhatsAppSaving(true)
+    setWhatsAppStatus('')
+    try {
+      const { data } = await api.patch(`/api/demo/users/${user.id}/whatsapp-settings`, {
+        mobileNumber: whatsAppNumber.trim(),
+        whatsappNotificationsEnabled: whatsAppEnabled
+      })
+      setUser(current => ({ ...current, ...data }))
+      setDemoUsers(current => current.map(item => item.id === data.id ? { ...item, ...data } : item))
+      setWhatsAppStatus('WhatsApp preferences saved.')
+    } catch (error) {
+      setWhatsAppStatus(friendlyError(error))
+    } finally {
+      setWhatsAppSaving(false)
+    }
+  }
+
   // Load real database IDs so the demo identity switcher always matches MySQL.
   useEffect(() => {
     let mounted = true
@@ -147,6 +177,54 @@ export default function App() {
     <main className="main-area">
       <header className="topbar"><div className="topbar-left"><button className="icon-btn mobile-menu" onClick={() => setMenuOpen(true)}><Menu size={20}/></button><span className="breadcrumb">Portal <span>/</span> {pageTitle}</span></div><div className="topbar-right">
         <div className="demo-label"><span className="online-dot"/> {demoMode ? 'LOCAL DEMO' : 'CONNECTED'}</div>
+        <div style={{position:'relative'}}>
+          <button
+            type="button"
+            className="icon-btn"
+            title="WhatsApp notification settings"
+            aria-label="WhatsApp notification settings"
+            aria-expanded={whatsAppOpen}
+            onClick={() => {
+              setWhatsAppOpen(value => !value)
+              setNotificationsOpen(false)
+              setWhatsAppStatus('')
+            }}
+          ><MessageCircle size={18}/></button>
+          {whatsAppOpen&&<div style={{
+            position:'absolute',right:0,top:'calc(100% + 12px)',width:'min(340px, calc(100vw - 28px))',
+            background:'#fff',border:'1px solid #e6eaf1',borderRadius:13,
+            boxShadow:'0 18px 50px rgba(28,42,72,.18)',zIndex:1000,padding:16
+          }}>
+            <form onSubmit={saveWhatsAppSettings}>
+              <b style={{display:'block',fontSize:13,color:'#26344d'}}>WhatsApp notifications</b>
+              <p style={{fontSize:10,color:'#8994a7',lineHeight:1.5,margin:'6px 0 12px'}}>
+                Add your WhatsApp number and choose whether this account can receive LoanDesk updates.
+              </p>
+              <label style={{display:'block',fontSize:10,fontWeight:700,color:'#536178',marginBottom:5}}>Mobile number</label>
+              <input
+                type="tel"
+                value={whatsAppNumber}
+                onChange={event=>setWhatsAppNumber(event.target.value)}
+                placeholder="+91 98765 43210"
+                autoComplete="tel"
+                style={{width:'100%',boxSizing:'border-box',padding:'10px 11px',border:'1px solid #dfe4ed',borderRadius:8,fontSize:12}}
+              />
+              <label style={{display:'flex',alignItems:'flex-start',gap:8,fontSize:11,color:'#536178',lineHeight:1.45,margin:'12px 0'}}>
+                <input
+                  type="checkbox"
+                  checked={whatsAppEnabled}
+                  onChange={event=>setWhatsAppEnabled(event.target.checked)}
+                  style={{marginTop:2}}
+                />
+                I agree to receive WhatsApp notifications for this account.
+              </label>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={whatsAppSaving}>
+                {whatsAppSaving?'Saving…':'Save preferences'}
+              </button>
+              {whatsAppStatus&&<small role="status" style={{display:'block',marginTop:9,fontSize:10,color:whatsAppStatus.includes('saved')?'#27835d':'#bd4b55'}}>{whatsAppStatus}</small>}
+            </form>
+          </div>}
+        </div>
         <div style={{position:'relative'}}>
           <button
             type="button"
