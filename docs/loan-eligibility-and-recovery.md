@@ -13,7 +13,7 @@ Employees, DDO officers and HOO officers may apply. The applicant's service grou
 | C | ₹7,00,000 |
 | D | ₹5,00,000 |
 
-Each individual application must be at least ₹1,00,000 and cannot exceed the applicant's group ceiling. The group ceiling is also the maximum annual entitlement.
+Each individual application must be at least ₹1,00,000 and cannot exceed the applicant's group ceiling. The group ceiling is the maximum annual entitlement and the maximum allowed outstanding principal exposure.
 
 DDO and HOO demo accounts are assigned Groups B and A respectively. The applicant's group is stored on the `users.service_group` column.
 
@@ -21,15 +21,21 @@ DDO and HOO demo accounts are assigned Groups B and A respectively. The applican
 
 The current Indian financial year is used: 1 April through 31 March. The server uses the Asia/Kolkata time zone.
 
-Non-rejected applications in the current financial year reserve entitlement. Pending approval and revision-requested applications are included, so an applicant cannot bypass the limit by submitting multiple pending applications. Rejected applications release their reservation.
+Non-rejected applications in the current financial year reserve annual entitlement. Pending approval and revision-requested applications are included, so an applicant cannot bypass the limit by submitting multiple pending applications. Rejected applications release their reservation.
 
 ## 70% principal recovery rule
 
 Repayments are recorded as principal-only amounts in the `loan_repayments` table. Only approved loans can receive repayment entries. A repayment cannot exceed the remaining principal.
 
-Repayments do not replenish entitlement until at least 70% of the applicant's aggregate principal used in the current financial year has been recovered. Once the threshold is met, available entitlement is calculated from the group's cap minus outstanding principal. This allows a borrower who has repaid 70% to reapply for an amount that fits within the restored headroom.
+The 70% recovery test considers the applicant's aggregate principal across all non-rejected loans, including loans carried over from earlier financial years. Repayments reduce outstanding principal, but they do not replenish entitlement until at least 70% of aggregate principal already availed has been recovered.
 
-For example, a Group A/B borrower uses ₹10,00,000 and recovers ₹7,00,000. Their outstanding principal is ₹3,00,000, so up to ₹7,00,000 of headroom is restored.
+Once the threshold is met, available entitlement is calculated from both:
+- the current financial year's group entitlement less current-year outstanding principal; and
+- the group ceiling less total outstanding principal across all loans.
+
+The lower available amount is enforced. This prevents a new financial year from automatically erasing an unrecovered loan balance.
+
+Example: a Group A/B borrower has used ₹10,00,000 and recovered ₹7,00,000. Their total outstanding principal is ₹3,00,000, so up to ₹7,00,000 of headroom is restored. If they borrow that ₹7,00,000, their total outstanding exposure returns to ₹10,00,000 and another application is blocked until further recovery meets the 70% test again.
 
 The eligibility endpoint is:
 
