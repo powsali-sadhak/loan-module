@@ -63,7 +63,7 @@ class LoanDocumentServiceTests {
     }
 
     @Test
-    void rejectsPdfExtensionWhenContentIsNotPdf() {
+    void rejectsPdfExtensionWhenContentIsNotPdf() throws Exception {
         MockMultipartFile upload = new MockMultipartFile(
                 "document", "supporting.pdf", "application/pdf",
                 "this is not a PDF".getBytes());
