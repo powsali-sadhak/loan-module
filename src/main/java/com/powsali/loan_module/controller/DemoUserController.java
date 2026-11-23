@@ -22,8 +22,12 @@ public class DemoUserController {
     @GetMapping
     public List<DemoUserResponse> getDemoUsers() {
         return userRepository.findAll().stream()
-                .filter(user -> user.getUsername() != null
-                        && user.getUsername().matches("(employee|ddo|hoo|support)\\d+") || "admin".equals(user.getUsername()))
+                .filter(user -> {
+                    String username = user.getUsername();
+                    return username != null
+                            && (username.matches("(employee|ddo|hoo|support)\\d+")
+                            || "admin".equals(username));
+                })
                 .sorted(Comparator
                         .comparingInt((User user) -> roleOrder(user.getUsername()))
                         .thenComparingInt(user -> accountNumber(user.getUsername())))
