@@ -45,11 +45,63 @@ function LoanTable({loans,loading}) {
 
 export function ApplyLoan({user,demoMode}) {
   const [form,setForm]=useState({amount:'',purpose:''}),[busy,setBusy]=useState(false),[error,setError]=useState(''),[done,setDone]=useState(null)
+  const [eligibility,setEligibility]=useState(null),[eligibilityLoading,setEligibilityLoading]=useState(true),[eligibilityError,setEligibilityError]=useState('')
   const nav=useNavigate()
+
+  useEffect(()=>{
+    let active=true
+    setEligibility(null)
+    setEligibilityLoading(true)
+    setEligibilityError('')
+    api.get(`/api/loans/eligibility/${user.id}`)
+      .then(({data})=>{if(active)setEligibility(data)})
+      .catch(e=>{if(active)setEligibilityError(friendlyError(e))})
+      .finally(()=>{if(active)setEligibilityLoading(false)})
+    return ()=>{active=false}
+  },[user.id])
+
   function change(e){setForm({...form,[e.target.name]:e.target.value})}
-  async function submit(e){e.preventDefault();setBusy(true);setError('');try{const body={applicantId:user.id,amount:Number(form.amount),purpose:form.purpose,...(demoMode?{appliedById:user.id}:{})};const r=await api.post('/api/loans/apply',body);setDone(r.data)}catch(e){setError(friendlyError(e))}finally{setBusy(false)}}
+  const availableAmount=Number(eligibility?.availableAmount||0)
+  const maximumApplicationAmount=Math.min(
+    Number(eligibility?.maximumApplicationAmount||0),
+    availableAmount
+  )
+  const canApply=Boolean(eligibility)&&!eligibilityLoading&&!eligibilityError&&maximumApplicationAmount>=100000
+
+  async function submit(e){
+    e.preventDefault()
+    setBusy(true)
+    setError('')
+    try{
+      const body={applicantId:user.id,amount:Number(form.amount),purpose:form.purpose,...(demoMode?{appliedById:user.id}:{})}
+      const r=await api.post('/api/loans/apply',body)
+      setDone(r.data)
+    }catch(e){setError(friendlyError(e))}
+    finally{setBusy(false)}
+  }
+
   if(done)return <div className="success-screen"><div className="success-mark"><Check size={30}/></div><div className="eyebrow">APPLICATION SUBMITTED</div><h1>You’re all set.</h1><p>Your loan request has been sent into the approval workflow.</p><div className="success-summary"><span>Application reference</span><b>LN-{String(done.loanId).padStart(5,'0')}</b><span>Requested amount</span><b>{money(done.amount)}</b></div><button className="btn btn-primary" onClick={()=>nav(`/loans/${done.loanId}`)}>View application <ArrowRight size={16}/></button><button className="btn btn-quiet" onClick={()=>nav('/apply')}>Submit another</button></div>
-  return <><PageHeader eyebrow="LOAN SERVICES" title="Apply for a loan" subtitle="Share a few details and submit your request for approval."/><div className="form-layout"><form className="panel form-panel" onSubmit={submit}><div className="form-section-title"><span>01</span><div><b>Loan details</b><small>Tell us what you need and how much.</small></div></div>{error&&<Alert>{error}</Alert>}<label className="field"><span>Loan amount <em>*</em></span><div className="input-prefix"><span>₹</span><input type="number" min="1" step="1" required name="amount" value={form.amount} onChange={change} placeholder="e.g. 250000"/></div><small>Enter the amount in Indian Rupees.</small></label><label className="field"><span>Purpose of loan <em>*</em></span><textarea required name="purpose" value={form.purpose} onChange={change} rows="4" maxLength="500" placeholder="Briefly explain why you need this loan…"/><small>{form.purpose.length}/500 characters</small></label><div className="form-note"><ShieldCheck size={17}/><span>Your application will be routed through the active approval workflow configured by your department.</span></div><div className="form-actions"><button type="button" className="btn btn-quiet" onClick={()=>setForm({amount:'',purpose:''})}>Clear form</button><button disabled={busy} className="btn btn-primary">{busy?<LoaderCircle className="spin" size={16}/>:<Send size={16}/>} Submit application</button></div></form><aside className="side-info"><div className="info-illustration"><div className="info-orbit orbit-one"/><div className="info-orbit orbit-two"/><div className="info-doc"><FileText size={32}/><CheckCircle2 size={18}/></div></div><h3>Simple. Transparent. Trackable.</h3><p>Once submitted, your application moves through the configured approval steps. You can follow every update from My applications.</p><div className="info-points"><div><CheckCircle2 size={16}/> Track approval progress</div><div><CheckCircle2 size={16}/> View action history</div><div><CheckCircle2 size={16}/> Respond to revision requests</div></div></aside></div></>
+
+  return <><PageHeader eyebrow="LOAN SERVICES" title="Apply for a loan" subtitle="Share a few details and submit your request for approval."/>
+    <div className="form-layout">
+      <form className="panel form-panel" onSubmit={submit}>
+        <div className="form-section-title"><span>01</span><div><b>Loan details</b><small>Tell us what you need and how much.</small></div></div>
+        {error&&<Alert>{error}</Alert>}
+        {eligibilityError&&<Alert>{eligibilityError}</Alert>}
+        {eligibilityLoading?<Spinner/>:eligibility&&<div className="form-note"><ShieldCheck size={17}/><span>
+          Group {eligibility.serviceGroup} · Financial year {eligibility.financialYear}. Annual group limit: {money(eligibility.annualLimit)}.
+          Applied: {money(eligibility.annualApplied)} · Principal recovered: {money(eligibility.principalRecovered)} · Available now: <b>{money(eligibility.availableAmount)}</b>.
+          {eligibility.recoveryThresholdMet?' Recovery threshold is met.':' At least 70% principal recovery is required before used entitlement can be replenished.'}
+        </span></div>}
+        {!eligibilityLoading&&eligibility&&maximumApplicationAmount<100000&&<Alert>{eligibility.message}</Alert>}
+        <label className="field"><span>Loan amount <em>*</em></span><div className="input-prefix"><span>₹</span><input type="number" min="100000" max={maximumApplicationAmount||undefined} step="1" required name="amount" value={form.amount} onChange={change} placeholder="Minimum ₹1,00,000" disabled={!canApply}/></div><small>Minimum ₹1,00,000. Maximum for your group/application and current available annual entitlement: {money(maximumApplicationAmount)}.</small></label>
+        <label className="field"><span>Purpose of loan <em>*</em></span><textarea required name="purpose" value={form.purpose} onChange={change} rows="4" maxLength="500" placeholder="Briefly explain why you need this loan…" disabled={!canApply}/><small>{form.purpose.length}/500 characters</small></label>
+        <div className="form-note"><ShieldCheck size={17}/><span>Applications are reviewed by a DDO and then an HOO. DDO/HOO applicants must be reviewed by a different officer at the relevant stage.</span></div>
+        <div className="form-actions"><button type="button" className="btn btn-quiet" onClick={()=>setForm({amount:'',purpose:''})}>Clear form</button><button disabled={busy||!canApply} className="btn btn-primary">{busy?<LoaderCircle className="spin" size={16}/>:<Send size={16}/>} Submit application</button></div>
+      </form>
+      <aside className="side-info"><div className="info-illustration"><div className="info-orbit orbit-one"/><div className="info-orbit orbit-two"/><div className="info-doc"><FileText size={32}/><CheckCircle2 size={18}/></div></div><h3>Simple. Transparent. Trackable.</h3><p>Each application must be at least ₹1 lakh. Group limits are A/B: ₹10 lakh, C: ₹7 lakh and D: ₹5 lakh per financial year, subject to the 70% principal recovery rule.</p><div className="info-points"><div><CheckCircle2 size={16}/> Track approval progress</div><div><CheckCircle2 size={16}/> View action history</div><div><CheckCircle2 size={16}/> Respond to revision requests</div></div></aside>
+    </div>
+  </>
 }
 
 export function MyLoans({user}) {
