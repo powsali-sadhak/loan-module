@@ -61,6 +61,21 @@ Repayment history:
 
 `GET /api/loans/{loanId}/repayments`
 
+## Borrower-selected recovery schedule (zero interest)
+
+After a loan is approved, the borrower chooses the monthly principal recovery amount in the Recovery History tab. LoanDesk calculates the duration as the number of instalments required to cover the outstanding principal:
+
+\`instalment count = ceiling(outstanding principal / borrower-selected monthly amount)\`
+
+The first due date is the first day of the next calendar month (Asia/Kolkata); later instalments are due on the first day of each following month. The final instalment is reduced to the exact remaining principal when needed. No interest, processing charge or other amount is added. Total scheduled recovery equals the outstanding principal only.
+
+The schedule is stored in \`loan_recovery_installments\`. Each row carries the scheduled amount, due date, amount paid, payment date and status. An instalment is marked PAID only when the full scheduled amount is covered; a partial payment is shown as PARTIALLY_PAID. Officers' recorded repayments are allocated oldest-due-first, including advance payments. A borrower can configure one schedule per approved loan.
+
+Endpoints:
+
+- \`POST /api/loans/{loanId}/recovery-schedule\` — borrower submits \`applicantId\` and \`monthlyAmount\`.
+- \`GET /api/loans/recovery-schedules?viewerId={id}\` — borrowers see their own schedules; DDO/HOO/ADMIN see the department register.
+
 ## Approval hierarchy and officer applicants
 
 The mandatory workflow is exactly two steps:
