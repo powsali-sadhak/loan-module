@@ -468,21 +468,34 @@ export function Approvals({user}) {
 
 export function RecoveryHistory({user}) {
   const [records,setRecords]=useState([])
+  const [scheduleRows,setScheduleRows]=useState([])
+  const [ownLoans,setOwnLoans]=useState([])
   const [loading,setLoading]=useState(true)
   const [error,setError]=useState('')
+  const [success,setSuccess]=useState('')
   const [query,setQuery]=useState('')
   const [fromDate,setFromDate]=useState('')
   const [toDate,setToDate]=useState('')
+  const [monthlyAmounts,setMonthlyAmounts]=useState({})
+  const [savingLoanId,setSavingLoanId]=useState(null)
 
   async function load(){
     setLoading(true)
     setError('')
     try{
-      const response=await api.get('/api/loans/recoveries',{params:{viewerId:user.id}})
-      setRecords(Array.isArray(response.data)?response.data:[])
+      const [recoveryResponse,scheduleResponse,loanResponse]=await Promise.all([
+        api.get('/api/loans/recoveries',{params:{viewerId:user.id}}),
+        api.get('/api/loans/recovery-schedules',{params:{viewerId:user.id}}),
+        api.get('/api/loans/user/'+user.id)
+      ])
+      setRecords(Array.isArray(recoveryResponse.data)?recoveryResponse.data:[])
+      setScheduleRows(Array.isArray(scheduleResponse.data)?scheduleResponse.data:[])
+      setOwnLoans(Array.isArray(loanResponse.data)?loanResponse.data:[])
     }catch(e){
       setError(friendlyError(e))
       setRecords([])
+      setScheduleRows([])
+      setOwnLoans([])
     }finally{
       setLoading(false)
     }
@@ -491,19 +504,65 @@ export function RecoveryHistory({user}) {
   useEffect(()=>{load()},[user.id])
 
   const totalRecovered=records.reduce((sum,item)=>sum+Number(item.recoveryAmount||0),0)
-  const distinctLoans=new Set(records.map(item=>item.loanId)).size
-  const distinctBorrowers=new Set(records.map(item=>item.applicantId)).size
+  const paidInstallments=scheduleRows.filter(item=>item.status==='PAID').length
+  const pendingInstallments=scheduleRows.filter(item=>item.status!=='PAID').length
+  const scheduledLoanIds=new Set(scheduleRows.map(item=>Number(item.loanId)))
+  const recoveredByLoan=records.reduce((totals,item)=>{
+    totals[item.loanId]=(totals[item.loanId]||0)+Number(item.recoveryAmount||0)
+    return totals
+  },{})
+  const loansAwaitingSchedule=ownLoans.filter(loan=>
+    loan.status==='APPROVED'
+    &&!scheduledLoanIds.has(Number(loan.loanId))
+    &&Number(loan.amount||0)-Number(recoveredByLoan[loan.loanId]||0)>0
+  )
+
+  const formatDate=value=>value
+    ?new Date(String(value).slice(0,10)+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})
+    :'—'
+  const firstDueDate=()=>{
+    const now=new Date()
+    return new Date(now.getFullYear(),now.getMonth()+1,1).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})
+  }
+
+  async function createSchedule(loan){
+    const monthlyAmount=Number(monthlyAmounts[loan.loanId]||0)
+    const outstanding=Number(loan.amount||0)-Number(recoveredByLoan[loan.loanId]||0)
+    if(!monthlyAmount||monthlyAmount<=0)return
+    setSavingLoanId(loan.loanId)
+    setError('')
+    setSuccess('')
+    try{
+      await api.post('/api/loans/'+loan.loanId+'/recovery-schedule',{
+        applicantId:user.id,
+        monthlyAmount
+      })
+      setSuccess('Monthly recovery schedule created for LN-'+String(loan.loanId).padStart(5,'0')+'.')
+      setMonthlyAmounts(current=>({...current,[loan.loanId]:''}))
+      await load()
+    }catch(e){
+      setError(friendlyError(e))
+    }finally{
+      setSavingLoanId(null)
+    }
+  }
+
+  const filteredSchedules=scheduleRows.filter(item=>{
+    const dueDate=String(item.dueDate||'').slice(0,10)
+    const searchText=[
+      item.loanId,item.applicantName,item.applicantRole,item.applicantGroup,
+      item.installmentNumber,item.status
+    ].join(' ').toLowerCase()
+    return searchText.includes(query.toLowerCase())
+      &&(!fromDate||dueDate>=fromDate)
+      &&(!toDate||dueDate<=toDate)
+  })
 
   const filtered=records.filter(item=>{
     const receivedDate=String(item.receivedAt||'').slice(0,10)
     const searchText=[
-      item.loanId,
-      item.repaymentId,
-      item.applicantName,
-      item.applicantRole,
-      item.applicantGroup,
-      item.recordedByName,
-      item.remarks
+      item.loanId,item.repaymentId,item.applicantName,item.applicantRole,
+      item.applicantGroup,item.recordedByName,item.remarks
     ].join(' ').toLowerCase()
     return searchText.includes(query.toLowerCase())
       &&(!fromDate||receivedDate>=fromDate)
@@ -521,30 +580,120 @@ export function RecoveryHistory({user}) {
       eyebrow="FINANCE OPERATIONS"
       title="Recovery history"
       subtitle={user.role==='EMPLOYEE'
-        ?"Review principal repayments recorded against your loan applications."
-        :"Department-wide register of principal recovery transactions."}
+        ?"Choose your monthly principal recovery amount and track every due date."
+        :"Review scheduled instalments and principal recovery transactions across LoanDesk."}
       action={<button className="btn btn-quiet" onClick={load} disabled={loading}><RefreshCw size={16}/> Refresh</button>}
     />
     {error&&<Alert>{error}</Alert>}
+    {success&&<Alert type="success">{success}</Alert>}
+
     <div className="stats-grid">
-      <Stat label="Total recovered" value={loading?'—':money(totalRecovered)} detail="Recorded principal repayments" icon={Wallet} tone="green"/>
-      <Stat label="Recovery transactions" value={loading?'—':records.length} detail="Individual repayment entries" icon={Activity} tone="blue"/>
-      <Stat label="Loans with recovery" value={loading?'—':distinctLoans} detail="Unique loan applications" icon={FileText} tone="violet"/>
-      {user.role!=='EMPLOYEE'&&<Stat label="Borrowers" value={loading?'—':distinctBorrowers} detail="Employees and officers" icon={BadgeCheck} tone="amber"/>}
+      <Stat label="Total recovered" value={loading?'—':money(totalRecovered)} detail="Principal already received" icon={Wallet} tone="green"/>
+      <Stat label="Scheduled instalments" value={loading?'—':scheduleRows.length} detail="Across configured recovery plans" icon={CalendarDays} tone="blue"/>
+      <Stat label="Paid instalments" value={loading?'—':paidInstallments} detail="Fully settled instalments" icon={CheckCircle2} tone="green"/>
+      <Stat label="Pending instalments" value={loading?'—':pendingInstallments} detail="Unpaid or partly paid" icon={Clock3} tone="amber"/>
     </div>
+
+    {user.role!=='ADMIN'&&user.role!=='SUPPORT'&&<section className="panel table-panel" style={{marginBottom:18}}>
+      <div className="panel-heading">
+        <div><h3>Choose your monthly recovery amount</h3><p>Available for your approved loans that do not already have a schedule.</p></div>
+        <span className="soft-tag">0% interest</span>
+      </div>
+      <div className="form-note" style={{margin:'0 20px 14px'}}>
+        <ShieldCheck size={17}/>
+        <span>You choose the monthly principal deduction. LoanDesk calculates the number of months and creates a due date on the first day of each month, starting next month. No interest or extra charge is added; total scheduled recovery equals the outstanding principal. The final instalment may be smaller.</span>
+      </div>
+      {loading?<Spinner/>:loansAwaitingSchedule.length===0
+        ?<div style={{padding:'0 20px 18px',fontSize:11,color:'#8994a7'}}>There are no approved loans awaiting a recovery schedule.</div>
+        :<div className="ticket-list" style={{padding:'0 20px 10px'}}>
+          {loansAwaitingSchedule.map(loan=>{
+            const outstanding=Number(loan.amount||0)-Number(recoveredByLoan[loan.loanId]||0)
+            const monthlyAmount=Number(monthlyAmounts[loan.loanId]||0)
+            const months=monthlyAmount>0?Math.ceil(outstanding/monthlyAmount):null
+            return <div className="ticket-row" key={loan.loanId} style={{alignItems:'center',flexWrap:'wrap'}}>
+              <div className="ticket-symbol"><Wallet size={18}/></div>
+              <div className="ticket-main" style={{minWidth:180}}>
+                <b>{'LN-'+String(loan.loanId).padStart(5,'0')+' · '+money(outstanding)+' outstanding'}</b>
+                <small>{loan.purpose||'Approved loan'} · Approved loan principal only</small>
+              </div>
+              <div style={{display:'flex',gap:8,alignItems:'end',flexWrap:'wrap',flex:1,justifyContent:'flex-end'}}>
+                <label className="field" style={{margin:0,minWidth:180}}>
+                  <span>Monthly recovery amount (₹)</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max={outstanding}
+                    step="0.01"
+                    value={monthlyAmounts[loan.loanId]||''}
+                    onChange={e=>setMonthlyAmounts(current=>({...current,[loan.loanId]:e.target.value}))}
+                    placeholder="Enter amount"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={savingLoanId===loan.loanId||!monthlyAmount||monthlyAmount<=0||monthlyAmount>outstanding}
+                  onClick={()=>createSchedule(loan)}
+                >{savingLoanId===loan.loanId?<LoaderCircle className="spin" size={14}/>:<Check size={14}/>} Set schedule</button>
+              </div>
+              {monthlyAmount>0&&monthlyAmount<=outstanding&&<div style={{flexBasis:'100%',fontSize:10,color:'#8390a4',paddingLeft:48}}>
+                Estimated duration: <b>{months} month{months===1?'':'s'}</b> · First due date: <b>{firstDueDate()}</b> · No interest
+              </div>}
+            </div>
+          })}
+        </div>
+      }
+    </section>}
+
     <section className="panel table-panel">
       <div className="panel-heading">
-        <div><h3>Principal recovery register</h3><p>{user.role==='EMPLOYEE'?'Your repayment entries':'All repayment entries recorded across LoanDesk'}</p></div>
-        <span className="soft-tag">{filtered.length} records</span>
+        <div><h3>Scheduled recovery instalments</h3><p>Each instalment stays unpaid until an officer records the principal recovery.</p></div>
+        <span className="soft-tag">{filteredSchedules.length} instalments</span>
       </div>
       <div className="filter-bar">
-        <div className="search-field"><Search size={16}/><input aria-label="Search recovery records" placeholder="Search loan, borrower, officer or remarks…" value={query} onChange={e=>setQuery(e.target.value)}/></div>
+        <div className="search-field"><Search size={16}/><input aria-label="Search recovery records" placeholder="Search loan, borrower, status or officer…" value={query} onChange={e=>setQuery(e.target.value)}/></div>
         <label className="field" style={{margin:0,minWidth:140}}><span>From date</span><input type="date" value={fromDate} onChange={e=>setFromDate(e.target.value)}/></label>
         <label className="field" style={{margin:0,minWidth:140}}><span>To date</span><input type="date" min={fromDate||undefined} value={toDate} onChange={e=>setToDate(e.target.value)}/></label>
         <button className="btn btn-quiet btn-sm" onClick={clearFilters}>Clear filters</button>
       </div>
+      {loading?<Spinner/>:filteredSchedules.length===0
+        ?<Empty title="No scheduled instalments" copy={scheduleRows.length?'No schedule rows match your current filters.':'Once a borrower chooses a monthly recovery amount for an approved loan, its due dates will appear here.'}/>
+        :<div className="table-scroll">
+          <table>
+            <thead><tr>
+              <th>LOAN</th>
+              <th>BORROWER</th>
+              <th>INSTALMENT</th>
+              <th>RECOVERY AMOUNT</th>
+              <th>DUE DATE</th>
+              <th>PAID AMOUNT</th>
+              <th>PAID ON</th>
+              <th>STATUS</th>
+            </tr></thead>
+            <tbody>
+              {filteredSchedules.map(item=><tr key={item.installmentId}>
+                <td><Link className="id-link" to={'/loans/'+item.loanId}>{'LN-'+String(item.loanId).padStart(5,'0')}</Link></td>
+                <td><b>{item.applicantName||'User '+item.applicantId}</b><small style={{display:'block',color:'#99a3b1',marginTop:4}}>{titleCase(item.applicantRole)} · Group {item.applicantGroup||'—'}</small></td>
+                <td>{'#'+item.installmentNumber}</td>
+                <td className="amount-cell">{money(item.recoveryAmount)}</td>
+                <td>{formatDate(item.dueDate)}</td>
+                <td>{money(item.paidAmount)}</td>
+                <td>{item.paidAt?dateTime(item.paidAt):'—'}</td>
+                <td><span className={'status-pill '+(item.status==='PAID'?'success':item.status==='PARTIALLY_PAID'?'warning':'neutral')}><i/>{titleCase(item.status)}</span></td>
+              </tr>)}
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+
+    <section className="panel table-panel" style={{marginTop:18}}>
+      <div className="panel-heading">
+        <div><h3>Principal recovery payment log</h3><p>Actual repayments entered by DDO, HOO or ADMIN officers.</p></div>
+        <span className="soft-tag">{filtered.length} payments</span>
+      </div>
       {loading?<Spinner/>:filtered.length===0
-        ?<Empty title={records.length?'No matching recovery entries':'No recovery entries yet'} copy={records.length?'Try changing the search text or date range.':'Once a DDO or HOO records a principal repayment, it will appear here.'}/>
+        ?<Empty title="No recovery payments recorded" copy="Payments will appear here after an authorised officer records money received against an approved loan."/>
         :<div className="table-scroll">
           <table>
             <thead><tr>
@@ -561,9 +710,9 @@ export function RecoveryHistory({user}) {
             <tbody>
               {filtered.map(item=><tr key={item.repaymentId}>
                 <td>{dateTime(item.receivedAt)}</td>
-                <td className="id-link">REC-{String(item.repaymentId).padStart(5,'0')}</td>
-                <td><Link className="id-link" to={`/loans/${item.loanId}`}>LN-{String(item.loanId).padStart(5,'0')}</Link></td>
-                <td><b>{item.applicantName||`User ${item.applicantId}`}</b><small style={{display:'block',color:'#99a3b1',marginTop:4}}>{titleCase(item.applicantRole)}</small></td>
+                <td className="id-link">{'REC-'+String(item.repaymentId).padStart(5,'0')}</td>
+                <td><Link className="id-link" to={'/loans/'+item.loanId}>{'LN-'+String(item.loanId).padStart(5,'0')}</Link></td>
+                <td><b>{item.applicantName||'User '+item.applicantId}</b><small style={{display:'block',color:'#99a3b1',marginTop:4}}>{titleCase(item.applicantRole)}</small></td>
                 <td>{item.applicantGroup||'—'}</td>
                 <td>{money(item.loanAmount)}</td>
                 <td className="amount-cell">{money(item.recoveryAmount)}</td>
@@ -574,10 +723,6 @@ export function RecoveryHistory({user}) {
           </table>
         </div>
       }
-      {!loading&&filtered.length>0&&<div className="form-actions" style={{padding:'14px 20px',borderTop:'1px solid #eef1f5',justifyContent:'space-between'}}>
-        <small style={{color:'#8d99aa'}}>Showing {filtered.length} of {records.length} recovery entries</small>
-        <b>Total in view: {money(filtered.reduce((sum,item)=>sum+Number(item.recoveryAmount||0),0))}</b>
-      </div>}
     </section>
   </>
 }
