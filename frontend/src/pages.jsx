@@ -577,7 +577,7 @@ export function SupportDesk({user}) {
 
             {(user.role==='SUPPORT'||isAdmin)&&selected.status!=='CLOSED'&&<div className="steps-editor">
               <div className="steps-heading"><span>WORKFLOW ACTIONS</span></div>
-              {['OPEN','ASSIGNED'].includes(selected.status)&&<button className="btn btn-primary" disabled={busy} onClick={()=>changeStatus('IN_PROGRESS')}>Start working <ArrowRight size={15}/></button>}
+              {user.role==='SUPPORT'&&['OPEN','ASSIGNED'].includes(selected.status)&&<button className="btn btn-primary" disabled={busy} onClick={()=>changeStatus('IN_PROGRESS')}>Start working <ArrowRight size={15}/></button>}
               {selected.status==='IN_PROGRESS'&&<>
                 <label className="field"><span>Resolution summary</span><textarea rows="3" value={resolution} onChange={e=>setResolution(e.target.value)} placeholder="Explain how the issue was resolved…"/></label>
                 <button className="btn btn-primary" disabled={busy||!resolution.trim()} onClick={()=>changeStatus('RESOLVED')}>Mark resolved <CheckCircle2 size={15}/></button>
