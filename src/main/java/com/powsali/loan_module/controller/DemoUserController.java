@@ -23,7 +23,7 @@ public class DemoUserController {
     public List<DemoUserResponse> getDemoUsers() {
         return userRepository.findAll().stream()
                 .filter(user -> user.getUsername() != null
-                        && user.getUsername().matches("(employee|ddo|hoo|support)\\d+"))
+                        && user.getUsername().matches("(employee|ddo|hoo|support)\\d+") || "admin".equals(user.getUsername()))
                 .sorted(Comparator
                         .comparingInt((User user) -> roleOrder(user.getUsername()))
                         .thenComparingInt(user -> accountNumber(user.getUsername())))
@@ -41,11 +41,13 @@ public class DemoUserController {
         if (username.startsWith("employee")) return 1;
         if (username.startsWith("ddo")) return 2;
         if (username.startsWith("hoo")) return 3;
-        return 4;
+        if (username.startsWith("support")) return 4;
+        return 5;
     }
 
     private int accountNumber(String username) {
-        return Integer.parseInt(username.replaceAll("\\D", ""));
+        String digits = username.replaceAll("\\D", "");
+        return digits.isEmpty() ? 0 : Integer.parseInt(digits);
     }
 
     public record DemoUserResponse(
