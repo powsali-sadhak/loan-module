@@ -4,7 +4,7 @@ import {
   Activity, ArrowDownRight, ArrowRight, ArrowUpRight, BadgeCheck, CalendarDays, Check, CheckCircle2,
   ChevronRight, CircleAlert, Clock3, FilePlus2, FileText, Filter, Landmark, LifeBuoy,
   Inbox, LoaderCircle, MessageSquare, Plus, RefreshCw, Search, Send, ShieldCheck, SlidersHorizontal, UserRound,
-  Sparkles, Wallet, X
+  ChevronRight, Sparkles, Wallet, X
 } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import api, { friendlyError } from './api'
@@ -18,6 +18,221 @@ function Spinner(){return <div className="loading"><LoaderCircle className="spin
 function Alert({type='error',children,onClose}) { return <div className={`alert alert-${type}`}>{type==='error'?<CircleAlert size={17}/>:<CheckCircle2 size={17}/>}<span>{children}</span>{onClose&&<button onClick={onClose}><X size={15}/></button>}</div> }
 function Empty({title,copy,cta}) { return <div className="empty-state"><div className="empty-icon"><FileText size={24}/></div><b>{title}</b><p>{copy}</p>{cta}</div> }
 function Stat({label,value,detail,icon:Icon,tone='blue'}) { return <div className="stat-card"><div className={`stat-icon ${tone}`}><Icon size={19}/></div><div className="stat-label">{label}</div><div className="stat-value">{value}</div><div className="stat-detail">{detail}</div></div> }
+
+function parseLoanAmount(message) {
+  const lakh = message.match(/(?:₹\\s*)?(\\d+(?:\\.\\d+)?)\\s*(?:lakh|lakhs|lac|lacs)\\b/i)
+  if (lakh) return Math.round(Number(lakh[1]) * 100000)
+
+  const thousand = message.match(/(?:₹\\s*)?(\\d+(?:\\.\\d+)?)\\s*(?:thousand|k)\\b/i)
+  if (thousand) return Math.round(Number(thousand[1]) * 1000)
+
+  const rupees = message.match(/(?:₹|rs\\.?\\s*)(\\d[\\d,]*)/i)
+    || message.match(/\\b(\\d[\\d,]{4,})\\b/)
+  if (rupees) return Number(rupees[1].replaceAll(',', ''))
+  return null
+}
+
+function suggestTicket(message) {
+  const text = message.toLowerCase()
+  let category = 'OTHER'
+  let subject = 'General support assistance'
+
+  if (/login|log in|sign in|password|account access|locked out|otp|authentication/.test(text)) {
+    category = 'LOGIN_ACCESS'
+    subject = 'Login or account access assistance'
+  } else if (/document|upload|attachment|file|pdf/.test(text)) {
+    category = 'DOCUMENT_UPLOAD'
+    subject = 'Document upload assistance'
+  } else if (/eligib|limit|group [abcd]|loan amount|recovery|70 percent|70%/.test(text)) {
+    category = 'ELIGIBILITY'
+    subject = 'Loan eligibility clarification'
+  } else if (/apply|application|submit loan|loan submission|form/.test(text)) {
+    category = 'LOAN_SUBMISSION'
+    subject = 'Loan application assistance'
+  } else if (/status|track|pending|approved|rejected|forwarded/.test(text)) {
+    category = 'APPLICATION_STATUS'
+    subject = 'Loan application status enquiry'
+  } else if (/employee detail|name change|email|profile|employee record/.test(text)) {
+    category = 'EMPLOYEE_DETAILS'
+    subject = 'Employee details correction'
+  }
+
+  const priority = /urgent|immediately|security breach|fraud|deadline today|salary blocked/.test(text)
+    ? 'URGENT'
+    : /cannot|can't|unable|blocked|not working|error|failed/.test(text)
+      ? 'HIGH'
+      : 'MEDIUM'
+
+  return { category, subject, description: message.trim(), priority }
+}
+
+function LoanDeskAssistant({mode,user,eligibility,onApply}) {
+  const [open,setOpen] = useState(false)
+  const [input,setInput] = useState('')
+  const [messages,setMessages] = useState([{
+    from:'assistant',
+    text:mode==='loan'
+      ? `Hi ${user.name.split(' ')[0]}! I’m your LoanDesk Guide. Ask me about your Group ${user.serviceGroup||'—'} loan limit, the 70% recovery rule, the approval process, or tell me the amount you need.`
+      : `Hi ${user.name.split(' ')[0]}! I can help you describe the issue, choose a ticket category and suggest a priority. Tell me what happened and I’ll prepare a draft for you to review.`
+  }])
+  const [suggestion,setSuggestion] = useState(null)
+
+  function answerLoanQuestion(message) {
+    const text = message.toLowerCase()
+    const group = String(eligibility?.serviceGroup||user.serviceGroup||'').toUpperCase()
+    const configuredLimit = ({A:1000000,B:1000000,C:700000,D:500000})[group] || 0
+    const annualLimit = Number(eligibility?.annualLimit ?? configuredLimit)
+    const available = Number(eligibility?.availableAmount ?? 0)
+    const maximum = Math.min(
+      Number(eligibility?.maximumApplicationAmount ?? annualLimit),
+      available
+    )
+    const amount = parseLoanAmount(message)
+
+    if (/interest rate|interest|emi|instalment|installment|repayment period|tenure/.test(text)) {
+      return {
+        text:'The current LoanDesk policy data does not specify an interest rate, EMI amount or repayment tenure. Please confirm those details with your Finance/Accounts authority before submitting.',
+        suggestion:null
+      }
+    }
+
+    if (amount !== null) {
+      const suggestion = amount >= 100000 && amount <= maximum
+        ? {amount:String(amount)}
+        : null
+      let explanation
+      if (amount < 100000) {
+        explanation = `${money(amount)} is below the minimum application amount of ₹1,00,000.`
+      } else if (amount > annualLimit) {
+        explanation = `${money(amount)} is above your Group ${group} limit of ${money(annualLimit)} per application.`
+      } else if (amount > maximum) {
+        explanation = `${money(amount)} is above your currently available entitlement of ${money(maximum)}. Check your previous borrowing and principal recovery.`
+      } else {
+        explanation = `${money(amount)} is within the currently available limit shown for Group ${group}. You can use this amount in the form; the server will validate eligibility again when you submit.`
+      }
+      return {text:explanation,suggestion}
+    }
+
+    if (/70%|70 percent|recover|repaid|recovery|exhaust/.test(text)) {
+      return {
+        text:'When the applicable borrowing entitlement has been used, at least 70% of the principal already availed must be recovered before that repayment restores borrowing headroom. The eligibility panel above shows your current recovery and available amount.'
+          + (eligibility ? ` Your total principal recovered is ${money(eligibility.totalPrincipalRecovered)} and your outstanding principal is ${money(eligibility.outstandingPrincipal)}.` : ''),
+        suggestion:null
+      }
+    }
+
+    if (/approv|who.*check|who.*review|workflow|ddo|hoo/.test(text)) {
+      return {
+        text:'The configured approval route is DDO review followed by HOO final approval. An applicant cannot approve their own application. DDO applicants are reviewed by another DDO and then a HOO.',
+        suggestion:null
+      }
+    }
+
+    if (/limit|maximum|how much|group|eligible|eligib/.test(text)) {
+      return {
+        text:`Your Group ${group||'—'} maximum is ${money(annualLimit)}. The minimum application is ₹1,00,000. Based on the live eligibility response, you currently have ${money(available)} available. The financial year follows 1 April to 31 March.`,
+        suggestion:null
+      }
+    }
+
+    return {
+      text:'I can help with your group loan ceiling, the amount currently available, the 70% principal recovery rule, or who approves the application. You can also type an amount such as “I need 2 lakh” and I’ll check it against your displayed eligibility.',
+      suggestion:null
+    }
+  }
+
+  function answerTicketQuestion(message) {
+    const draft = suggestTicket(message)
+    const categoryName = titleCase(draft.category)
+    const priorityName = titleCase(draft.priority)
+    return {
+      text:`This sounds like a ${categoryName} issue. I suggest ${priorityName} priority. I’ve prepared a ticket subject and description from what you told me. Review the draft before using it; nothing is submitted automatically.`,
+      suggestion:draft
+    }
+  }
+
+  function sendMessage(raw=input) {
+    const message=String(raw||'').trim()
+    if(!message)return
+    const result=mode==='loan'
+      ? answerLoanQuestion(message)
+      : answerTicketQuestion(message)
+    setMessages(current=>[
+      ...current,
+      {from:'user',text:message},
+      {from:'assistant',text:result.text}
+    ])
+    setSuggestion(result.suggestion)
+    setInput('')
+  }
+
+  function applySuggestion() {
+    if(!suggestion)return
+    onApply(suggestion)
+    setMessages(current=>[...current,{
+      from:'assistant',
+      text:mode==='loan'
+        ?'I’ve filled the suggested loan amount into your form. Please complete or review the purpose before submitting.'
+        :'I’ve filled the suggested ticket details into your form. Please review the subject, description, category and priority before submitting.'
+    }])
+    setSuggestion(null)
+  }
+
+  const prompts = mode==='loan'
+    ? ['What is my group limit?','Explain the 70% recovery rule','Who approves my loan?']
+    : ['I cannot log in to LoanDesk','My loan application is stuck','I cannot upload a document']
+
+  return <section className="panel" style={{margin:'16px 0',padding:0,overflow:'hidden',border:'1px solid #e7eaf2'}}>
+    <button
+      type="button"
+      onClick={()=>setOpen(value=>!value)}
+      style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'13px 16px',border:0,background:'#f7f8ff',cursor:'pointer',textAlign:'left'}}
+    >
+      <span style={{width:34,height:34,borderRadius:10,display:'grid',placeItems:'center',background:'#e9edff',color:'#5068dc'}}><Sparkles size={17}/></span>
+      <span style={{flex:1}}>
+        <b style={{display:'block',fontSize:12,color:'#34415a'}}>LoanDesk Guide</b>
+        <small style={{display:'block',fontSize:9,color:'#8792a5'}}>{mode==='loan'?'Loan eligibility and application help':'Ticket category, priority and request drafting'}</small>
+      </span>
+      <span style={{fontSize:10,color:'#697791'}}>{open?'Hide assistant':'Chat with assistant'}</span>
+      <ChevronRight size={16} style={{transform:open?'rotate(90deg)':'none',transition:'transform .15s'}}/>
+    </button>
+    {open&&<div style={{padding:14}}>
+      <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:10}}>
+        {prompts.map(prompt=><button key={prompt} type="button" className="btn btn-quiet btn-sm" onClick={()=>sendMessage(prompt)}>{prompt}</button>)}
+      </div>
+      <div aria-live="polite" style={{display:'flex',flexDirection:'column',gap:9,maxHeight:250,overflowY:'auto',padding:'4px 2px 12px'}}>
+        {messages.map((item,index)=><div key={index} style={{display:'flex',justifyContent:item.from==='user'?'flex-end':'flex-start'}}>
+          <div style={{
+            maxWidth:'88%',padding:'9px 11px',borderRadius:11,
+            background:item.from==='user'?'#edf0ff':'#f4f6f9',
+            color:'#445168',fontSize:10,lineHeight:1.55,whiteSpace:'pre-wrap'
+          }}>{item.text}</div>
+        </div>)}
+      </div>
+      {suggestion&&<div className="form-note" style={{marginBottom:10}}>
+        <Sparkles size={16}/>
+        <span>{mode==='loan'?<>Suggested amount: <b>{money(suggestion.amount)}</b></>:<>Suggested ticket: <b>{titleCase(suggestion.category)}</b> · <b>{titleCase(suggestion.priority)}</b></>}</span>
+        <button type="button" className="btn btn-quiet btn-sm" onClick={applySuggestion}>Use in form</button>
+      </div>}
+      <div style={{display:'flex',gap:8,alignItems:'center'}}>
+        <input
+          aria-label="Message LoanDesk Guide"
+          value={input}
+          onChange={event=>setInput(event.target.value)}
+          onKeyDown={event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}}}
+          placeholder={mode==='loan'?'Ask about your loan or enter an amount…':'Describe the issue you need help with…'}
+          style={{flex:1,minWidth:0,border:'1px solid #e2e7f0',borderRadius:8,padding:'10px 11px',fontSize:11}}
+        />
+        <button type="button" className="btn btn-primary" onClick={()=>sendMessage()} disabled={!input.trim()} aria-label="Send message"><Send size={14}/></button>
+      </div>
+      <small style={{display:'block',marginTop:8,fontSize:9,color:'#98a1af'}}>
+        {mode==='loan'
+          ?'Guidance uses your current eligibility information. Final validation happens when you submit.'
+          :'The assistant drafts suggestions only. You remain in control of the ticket before submission.'}
+      </small>
+    </div>}
+  </section>
+}
 
 export function Dashboard({user}) {
   const [loans,setLoans]=useState([]),[loading,setLoading]=useState(true),[error,setError]=useState('')
@@ -97,6 +312,7 @@ export function ApplyLoan({user,demoMode}) {
         <label className="field"><span>Loan amount <em>*</em></span><div className="input-prefix"><span>₹</span><input type="number" min="100000" max={maximumApplicationAmount||undefined} step="1" required name="amount" value={form.amount} onChange={change} placeholder="Minimum ₹1,00,000" disabled={!canApply}/></div><small>Minimum ₹1,00,000. Maximum for your group/application and current available annual entitlement: {money(maximumApplicationAmount)}.</small></label>
         <label className="field"><span>Purpose of loan <em>*</em></span><textarea required name="purpose" value={form.purpose} onChange={change} rows="4" maxLength="500" placeholder="Briefly explain why you need this loan…" disabled={!canApply}/><small>{form.purpose.length}/500 characters</small></label>
         <div className="form-note"><ShieldCheck size={17}/><span>Applications are reviewed by a DDO and then an HOO. DDO/HOO applicants must be reviewed by a different officer at the relevant stage.</span></div>
+        {['EMPLOYEE','DDO'].includes(user.role)&&<LoanDeskAssistant mode="loan" user={user} eligibility={eligibility} onApply={values=>setForm(current=>({...current,...values}))}/>}
         <div className="form-actions"><button type="button" className="btn btn-quiet" onClick={()=>setForm({amount:'',purpose:''})}>Clear form</button><button disabled={busy||!canApply} className="btn btn-primary">{busy?<LoaderCircle className="spin" size={16}/>:<Send size={16}/>} Submit application</button></div>
       </form>
       <aside className="side-info"><div className="info-illustration"><div className="info-orbit orbit-one"/><div className="info-orbit orbit-two"/><div className="info-doc"><FileText size={32}/><CheckCircle2 size={18}/></div></div><h3>Simple. Transparent. Trackable.</h3><p>Each application must be at least ₹1 lakh. Group limits are A/B: ₹10 lakh, C: ₹7 lakh and D: ₹5 lakh per financial year, subject to the 70% principal recovery rule.</p><div className="info-points"><div><CheckCircle2 size={16}/> Track approval progress</div><div><CheckCircle2 size={16}/> View action history</div><div><CheckCircle2 size={16}/> Respond to revision requests</div></div></aside>
@@ -521,6 +737,7 @@ export function Support({user}) {
         <label className="field"><span>Loan ID (optional)</span><input type="number" min="1" value={form.loanId} onChange={e=>setForm({...form,loanId:e.target.value})} placeholder="e.g. 12"/></label>
         <label className="field full"><span>Description</span><textarea required rows="3" maxLength="5000" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Describe the issue in a little more detail…"/></label>
       </div>
+      {['EMPLOYEE','DDO'].includes(user.role)&&<LoanDeskAssistant mode="ticket" user={user} onApply={values=>setForm(current=>({...current,...values}))}/>}
       <div className="form-actions"><button className="btn btn-primary" disabled={busy}><Send size={15}/> {busy?'Submitting…':'Submit ticket'}</button></div>
     </form>}
 
