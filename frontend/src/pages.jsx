@@ -549,8 +549,8 @@ export function RecoveryHistory({user}) {
   }
 
   // Accept IDs such as LN-00003, 00003 or 3; multiple IDs may be comma/space separated.
-  const loanIdTokens=loanIdQuery.split(/[,;\\s]+/)
-    .map(value=>value.trim().toUpperCase().replace(/^LN[-_]?/,'').replace(/^0+(?=\\d)/,''))
+  const loanIdTokens=loanIdQuery.split(/[,;\s]+/)
+    .map(value=>value.trim().toUpperCase().replace(/^LN[-_]?/,'').replace(/^0+(?=\d)/,''))
     .filter(Boolean)
   const matchesLoanId=loanId=>loanIdTokens.length===0||loanIdTokens.includes(String(Number(loanId)))
 
