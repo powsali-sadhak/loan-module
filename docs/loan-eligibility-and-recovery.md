@@ -85,6 +85,8 @@ The mandatory workflow is exactly two steps:
 
 Employees, DDOs and HOOs may apply. The applicant cannot take any workflow action on their own application. Therefore, a DDO applicant must be reviewed by a different DDO and then a HOO; an HOO applicant must be reviewed by a DDO and then a different HOO.
 
-## Local-demo security note
+## Security profiles
 
-The current local demo branch permits unauthenticated API access and accepts demo user IDs in request bodies. These checks support local workflow testing only; they are not production authorization. Before deployment, restore JWT authorization and derive the applicant, approver and repayment recorder identities from the authenticated principal rather than trusting client-supplied IDs.
+The `local-demo` profile uses the development-only `X-Demo-User-Id` identity switcher so the portfolio UI can be explored without individual login. This header is not authentication and must never be exposed as a production access mechanism.
+
+Non-demo profiles require JWT bearer authentication. Loan applicant, approver and repayment recorder identities are derived from the authenticated principal rather than trusted from request-supplied actor IDs. Production deployments still require account provisioning, strong environment-managed secrets, HTTPS, database migrations, monitoring and a security review.
