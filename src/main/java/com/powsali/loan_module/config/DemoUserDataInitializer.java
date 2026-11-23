@@ -46,6 +46,8 @@ public class DemoUserDataInitializer implements CommandLineRunner {
 
     private List<DemoAccount> accounts() {
         return List.of(
+            new DemoAccount("admin", "System Administrator", "admin@loanmodule.com", Role.ADMIN, null),
+
             new DemoAccount("employee1", "Ananya Das", "employee1@test.com", Role.EMPLOYEE, "A"),
             new DemoAccount("employee2", "Arjun Ghosh", "employee2@test.com", Role.EMPLOYEE, "B"),
             new DemoAccount("employee3", "Ishita Roy", "employee3@test.com", Role.EMPLOYEE, "C"),
